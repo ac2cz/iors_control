@@ -34,6 +34,7 @@
 # Binary
 Debug/pi_pacsat
 Release/pi_pacsat
+iors_control.config
 
 # IDE files
 .settings
