@@ -32,14 +32,40 @@
 #define RADIO_PM4 4
 #define RADIO_PM5 5
 
-#define RADIO_CMD_ID "ID\r"
-#define RADIO_CMD_TYPE "TY\r"
+#define RADIO_CMD_GET_ID "ID\r"
+#define RADIO_CMD_GET_TYPE "TY\r"
 
+#define RADIO_CMD_GET_MEM_VFO_MODE_A "VM 0\r"
+#define RADIO_CMD_GET_MEM_VFO_MODE_B "VM 1\r"
+#define RADIO_CMD_SET_MEM_MODE_A "VM 0,1\r"
+#define RADIO_CMD_SET_VFO_MODE_A "VM 0,0\r"
+#define RADIO_CMD_SET_MEM_MODE_B "VM 1,1\r"
+#define RADIO_CMD_SET_VFO_MODE_B "VM 1,0\r"
+
+#define RADIO_CMD_GET_CHANNEL_MODE "CD\r"
+#define RADIO_CMD_SET_CHANNEL_MODE "CD 1\r"
+#define RADIO_CMD_SET_FREQ_MODE "CD 0\r"
+
+#define RADIO_CMD_GET_TNC_MODE "TN\r"
+#define RADIO_CMD_SET_TNC_MODE "TN 0,2\r"
+
+
+#define RADIO_CMD_MEM_CHANNEL "MR "
+
+#define RADIO_RPT01_TX_CHANNEL 201
+#define RADIO_RPT01_RX_CHANNEL 202
+#define RADIO_SSTV_TX_CHANNEL 300
+#define RADIO_SSTV_RX_CHANNEL 300
 
 void radio_closeserial(int fd);
 int radio_openserial(char *devicename);
 int setRTS(int fd, int level);
+int radio_check_connection(char *serialdev);
+int radio_set_cross_band_repeater_mode();
+int radio_set_aprs_mode();
+int radio_set_sstv_mode();
 int radio_program_pm(char *serialdev, int pm, int cross_band_repeater);
 int radio_send_command(char *serialdev, char * data, int len, char *response, int rlen);
+int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel);
 
 #endif /* RADIO_H_ */

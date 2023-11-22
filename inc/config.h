@@ -39,15 +39,19 @@ extern int g_verbose;          /* print verbose output when set */
 
 /* Define paramaters for config file */
 #define MAX_CONFIG_LINE_LENGTH 128
-#define BIT_RATE "bit_rate"
-#define CALLSIGN "callsign"
-#define MAX_FRAMES_IN_TX_BUFFER "max_frames_in_tx_buffer"
-#define SERIAL_DEV "serial_device"
+#define CONFIG_BIT_RATE "bit_rate"
+#define CONFIG_CALLSIGN "callsign"
+#define CONFIG_MAX_FRAMES_IN_TX_BUFFER "max_frames_in_tx_buffer"
+#define CONFIG_SERIAL_DEV "serial_device"
+#define CONFIG_RADIO_ID "radio_id_str"
+#define CONFIG_RADIO_TYPE "radio_type_str"
 
 extern int g_bit_rate; /* the bit rate of the TNC - 1200 4800 9600. Change actual value in DireWolf) */
 extern char g_callsign[MAX_CALLSIGN_LEN];
 extern int g_max_frames_in_tx_buffer;
 extern char g_serial_dev[MAX_FILE_PATH_LEN]; // device name for the serial port for Rig control
+extern char g_radio_id[15]; // The ID that the radio returns through the serial port
+extern char g_radio_type[15]; // The type that the TY command returns through the serial port
 
 void load_config();
 

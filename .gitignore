@@ -32,8 +32,8 @@
 *.app
 
 # Binary
-Debug/pi_pacsat
-Release/pi_pacsat
+Debug/iors_control
+Release/iors_control
 iors_control.config
 
 # IDE files

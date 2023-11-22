@@ -37,30 +37,47 @@ int g_frames_queued = 0;
 
 /* These global variables are in the config file */
 int g_bit_rate = 1200;
-char g_callsign[10] = "NA1ISS-12";
+char g_callsign[MAX_CALLSIGN_LEN] = "NA1ISS-12";
+char g_radio_id[15] = "ID TM-D710G";
+char g_radio_type[15] = "TY K,0,0,1,0";
 char g_serial_dev[MAX_FILE_PATH_LEN] = "/dev/ttyUSBX";
 int g_max_frames_in_tx_buffer = 2;
 
 int main() {
 	/* Load the config from disk */
     load_config();
-//    radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF);
 
     //	char * data = "MS BILL\r";
     //	char * data = "CC 0\r";
     //	char * data = "FO 0\r"; // Read VFO channel - 0 is A 1 is B
     //	char * data = "DL 0\r"; // Set Dual band 0, single band 1
-    //	char * data = "ID\r"; // Get id
-    	int rlen = 25;
-    //	char * data = "TY\r"; // Get type
     //	char * data = "VM 0\r"; // Returns VFO mode
-    	char response[rlen];
-        radio_send_command(g_serial_dev, RADIO_CMD_ID, strlen(RADIO_CMD_ID), response, rlen);
-        radio_send_command(g_serial_dev, RADIO_CMD_TYPE, strlen(RADIO_CMD_TYPE), response, rlen);
-
         //    char * data_set = "CC 1,0144000000,0,0,0,0,0,0,08,08,000,00600000,0,0000000000,0\r";
     //    radio_send_command(data_set, strlen(data_set));
 
+    //radio_set_aprs_mode();
+    //radio_set_sstv_mode();
+//    radio_set_cross_band_mode();
 
-    return 0;
+    if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF) != EXIT_SUCCESS) {
+    	debug_print("FATAL ERROR: Can not setup the radio\n");
+    	return EXIT_FAILURE;
+    }
+
+    if (radio_set_channel(g_serial_dev, RADIO_RPT01_TX_CHANNEL, RADIO_RPT01_RX_CHANNEL) != EXIT_SUCCESS) {
+    	debug_print("ERROR: Can't change channels\n");
+    	return EXIT_FAILURE;
+	}
+
+//    char response[25];
+//    int rlen = 10;
+//	int n = radio_send_command(g_serial_dev, RADIO_CMD_SET_TNC_MODE, strlen(RADIO_CMD_SET_TNC_MODE), response, rlen);
+//	if (n < 0) {
+//		debug_print("Can not send TNC MODE command to radio\n");
+//		return EXIT_FAILURE;
+//	}
+//	response[n] = 0;
+//	debug_print("TNC MODE: %s",response);
+
+    return EXIT_SUCCESS;
 }

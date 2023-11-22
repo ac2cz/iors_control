@@ -54,28 +54,20 @@ void load_config() {
 				debug_print(" %s",key);
 				value[strcspn(value,"\n")] = 0; // Move the nul termination to get rid of the new line
 				debug_print(" = %s\n",value);
-				if (strcmp(key, BIT_RATE) == 0) {
+				if (strcmp(key, CONFIG_BIT_RATE) == 0) {
 					int rate = atoi(value);
 					g_bit_rate = rate;
-				} else if (strcmp(key, CALLSIGN) == 0) {
+				} else if (strcmp(key, CONFIG_CALLSIGN) == 0) {
 					strlcpy(g_callsign, value,sizeof(g_callsign));
-				} else if (strcmp(key, SERIAL_DEV) == 0) {
+				} else if (strcmp(key, CONFIG_SERIAL_DEV) == 0) {
 					strlcpy(g_serial_dev, value,sizeof(g_serial_dev));
-				} else if (strcmp(key, MAX_FRAMES_IN_TX_BUFFER) == 0) {
+				} else if (strcmp(key, CONFIG_RADIO_ID) == 0) {
+					strlcpy(g_radio_id, value,sizeof(g_radio_id));
+				} else if (strcmp(key, CONFIG_RADIO_TYPE) == 0) {
+					strlcpy(g_radio_type, value,sizeof(g_radio_type));
+				} else if (strcmp(key, CONFIG_MAX_FRAMES_IN_TX_BUFFER) == 0) {
 					int n = atoi(value);
 					g_max_frames_in_tx_buffer = n;
-//				} else if (strcmp(key, PB_STATUS_PERIOD_IN_SECONDS) == 0) {
-//					int n = atoi(value);
-//					g_pb_status_period_in_seconds = n;
-//				} else if (strcmp(key, PB_MAX_PERIOD_FOR_CLIENT_IN_SECONDS) == 0) {
-//					int n = atoi(value);
-//					g_pb_max_period_for_client_in_seconds = n;
-//				} else if (strcmp(key, UPLINK_STATUS_PERIOD_IN_SECONDS) == 0) {
-//					int n = atoi(value);
-//					g_uplink_status_period_in_seconds = n;
-//				} else if (strcmp(key, UPLINK_MAX_PERIOD_FOR_CLIENT_IN_SECONDS) == 0) {
-//					int n = atoi(value);
-//					g_uplink_max_period_for_client_in_seconds = n;
 
 				} else {
 					error_print("Unknown key in %s file: %s\n",filename, key);
