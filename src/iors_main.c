@@ -59,11 +59,12 @@ int main() {
     //radio_set_sstv_mode();
 //    radio_set_cross_band_mode();
 
+/*
     if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF) != EXIT_SUCCESS) {
     	debug_print("FATAL ERROR: Can not setup the radio\n");
     	return EXIT_FAILURE;
     }
-
+*/
     if (radio_set_channel(g_serial_dev, RADIO_RPT01_TX_CHANNEL, RADIO_RPT01_RX_CHANNEL) != EXIT_SUCCESS) {
     	debug_print("ERROR: Can't change channels\n");
     	return EXIT_FAILURE;
