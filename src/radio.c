@@ -259,9 +259,9 @@ int radio_check_connection(char *serialdev) {
  * Change the channel for band A and band B
  */
 int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel) {
-	char response[25];
 	/* Make sure we are in channel mode */
-	int rlen = 10;
+	int rlen = 25;
+	char response[rlen];
 	int n = radio_send_command(serialdev, RADIO_CMD_GET_MEM_VFO_MODE_A, strlen(RADIO_CMD_GET_MEM_VFO_MODE_A), response, rlen);
 	if (n < 5) {
 		debug_print("Can not send GET MEM A command to radio\n");
@@ -272,8 +272,9 @@ int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel) {
 		debug_print("A band Not in Mem mode, switching\n");
 		n = radio_send_command(serialdev, RADIO_CMD_SET_MEM_MODE_A, strlen(RADIO_CMD_SET_MEM_MODE_A), response, rlen);
 		response[n] = 0;
-//		debug_print("MEM MODE A: %s\n",response);
+		debug_print("MEM MODE A: %s\n",response);
 	}
+
 	n = radio_send_command(serialdev, RADIO_CMD_GET_MEM_VFO_MODE_B, strlen(RADIO_CMD_GET_MEM_VFO_MODE_B), response, rlen);
 	if (n < 5) {
 		debug_print("Can not send GET MEM B command to radio\n");
@@ -284,13 +285,13 @@ int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel) {
 		debug_print("B band Not in Mem mode, switching\n");
 		n = radio_send_command(serialdev, RADIO_CMD_SET_MEM_MODE_B, strlen(RADIO_CMD_SET_MEM_MODE_B), response, rlen);
 		response[n] = 0;
-//		debug_print("MEM MODE B: %s\n",response);
+		debug_print("MEM MODE B: %s\n",response);
 	}
 
 	/* Set the requested channels */
 	char command[25];
-	char channel_str[4];
-	strlcpy(command, RADIO_CMD_MEM_CHANNEL, 4);
+	char channel_str[6];
+	strlcpy(command, RADIO_CMD_MEM_CHANNEL, sizeof(command));
 	strlcat(command, "0,", sizeof(command));
 	snprintf(channel_str, 5, "%d\r",band_a_channel);
 	strlcat(command, channel_str,sizeof(command));
@@ -304,7 +305,7 @@ int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel) {
 
 	// TODO = check the channel was set or return error
 
-	strlcpy(command, RADIO_CMD_MEM_CHANNEL, 4);
+	strlcpy(command, RADIO_CMD_MEM_CHANNEL, sizeof(command));
 	strlcat(command, "1,", sizeof(command));
 	snprintf(channel_str, 5, "%d\r",band_b_channel);
 	strlcat(command, channel_str,sizeof(command));
@@ -539,20 +540,21 @@ int radio_send_command(char *serialdev, char * data, int len, char *response, in
 //			debug_print("Wrote %d bytes\n",p);
 //		}
 		usleep(50*1000);
-		debug_print("Response:");
+//		debug_print("Response:");
 		int n = read(fd, response, rlen);
 		if (response[0] == '?') {
 			debug_print("Radio Command failed\n");
 			radio_closeserial(fd);
 			return -1;
 		}
-
+/*
 		int i;
 		for (i=0; i< n; i++) {
 //			debug_print("%c",response[i]);
 								debug_print(" %0x",response[i] & 0xff);
 		}
 		debug_print("\n");
+*/
 		if (n < 0) {
 			printf ("error %d reading data\n", errno);
 			radio_closeserial(fd);

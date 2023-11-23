@@ -75,8 +75,6 @@ int main() {
     	return EXIT_FAILURE;
 	}
 
-    fflush(stdout);
-    sleep(2);
 //    char response[25];
 //    int rlen = 10;
 //	int n = radio_send_command(g_serial_dev, RADIO_CMD_SET_TNC_MODE, strlen(RADIO_CMD_SET_TNC_MODE), response, rlen);
