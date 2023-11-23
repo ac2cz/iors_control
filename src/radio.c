@@ -104,7 +104,9 @@ int radio_openserial(char *devicename) {
 
     options.c_cflag |= CRTSCTS; /* Enable hardware flow control */
 //    options.c_cflag &= ~CRTSCTS; /* disable hardware flow contol */
-    options.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG); /* RAW Input */
+    options.c_lflag &= ~(ICANON | ECHO | ECHOE | ECHONL | ISIG | IEXTEN); /* RAW Input */
+    options.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP
+            |INLCR|IGNCR|ICRNL|IXON);
     options.c_oflag &= ~OPOST; /* Raw output */
 
     /*
@@ -253,6 +255,9 @@ int radio_check_connection(char *serialdev) {
 	return EXIT_SUCCESS;
 }
 
+/**
+ * Change the channel for band A and band B
+ */
 int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel) {
 	char response[25];
 	/* Make sure we are in channel mode */
@@ -353,12 +358,19 @@ int radio_program_pm(char *serialdev, int pm, int cross_band_repeater) {
     	return EXIT_FAILURE;
     }
 
-	usleep(50 * 1000);
+	usleep(100 * 1000);
 
     /* Wait for 3 bytes */
     int n = read(fd, buf, 3);
     if (strncmp("0M\r",buf,3) != 0) {
-    	fprintf(stderr, "ERROR: Could not set radio into program mode\n");
+    int i;	    for (i=0; i< n; i++) {
+    	    	//				debug_print("%c",buf[i]);
+    	    	printf(" %0x",buf[i] & 0xff);
+    	    	if ((i % 16 == 0) && (i != 0))
+    	    		printf("\n");
+    	    }
+    	    printf("|\n");
+    	fprintf(stderr, "ERROR: Could not set radio into program mode. Mising 3 byte response\n");
     	radio_closeserial(fd);
     	return EXIT_FAILURE;
     }
@@ -441,7 +453,7 @@ int radio_program_pm(char *serialdev, int pm, int cross_band_repeater) {
     }
     printf("|\n");
     if (n != 0x2+5) {
-    	fprintf(stderr, "Error reading data.  Requested %d but %d returned\n",0x17+5, n);
+    	fprintf(stderr, "Error reading data.  Requested %d but %d returned\n",0x2+5, n);
     	radio_closeserial(fd);
     	return EXIT_FAILURE;
     }
@@ -468,7 +480,6 @@ int radio_program_pm(char *serialdev, int pm, int cross_band_repeater) {
     	radio_closeserial(fd);
     	return EXIT_FAILURE;
     }
-
 
     /* Now write an E to exit programming mode*/
     char data[] = {0x45};

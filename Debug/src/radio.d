@@ -1,7 +1,7 @@
 src/radio.o: ../src/radio.c ../inc/config.h ../inc/debug.h \
- ../inc/config.h ../inc/radio.h ../inc/str_util.h
+ ../inc/config.h ../inc/radio.h ../../iors_common/inc/str_util.h
 ../inc/config.h:
 ../inc/debug.h:
 ../inc/config.h:
 ../inc/radio.h:
-../inc/str_util.h:
+../../iors_common/inc/str_util.h:

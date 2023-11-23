@@ -23,4 +23,16 @@
 		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
+	<linkedResources>
+		<link>
+			<name>iors-src</name>
+			<type>2</type>
+			<locationURI>$%7BPARENT-1-PROJECT_LOC%7D/iors_common/src</locationURI>
+		</link>
+		<link>
+			<name>iors_common-src</name>
+			<type>2</type>
+			<locationURI>WORKSPACE_LOC/iors_common/src</locationURI>
+		</link>
+	</linkedResources>
 </projectDescription>
