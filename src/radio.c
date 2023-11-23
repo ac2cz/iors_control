@@ -238,7 +238,7 @@ int radio_check_connection(char *serialdev) {
 		debug_print("Can not connect to radio: %s.  Got id %s\n", g_radio_id, response);
 		return EXIT_FAILURE;
 	}
-	debug_print("CONNECTED TO RADIO: %s",response);
+	debug_print("CONNECTED TO RADIO: %s\n",response);
 
 	n = radio_send_command(serialdev, RADIO_CMD_GET_TYPE, strlen(RADIO_CMD_GET_TYPE), response, rlen);
 	if (n < 0) {
@@ -539,7 +539,7 @@ int radio_send_command(char *serialdev, char * data, int len, char *response, in
 //			debug_print("Wrote %d bytes\n",p);
 //		}
 		usleep(50*1000);
-//		debug_print("Response:");
+		debug_print("Response:");
 		int n = read(fd, response, rlen);
 		if (response[0] == '?') {
 			debug_print("Radio Command failed\n");
@@ -547,12 +547,12 @@ int radio_send_command(char *serialdev, char * data, int len, char *response, in
 			return -1;
 		}
 
-//		int i;
-//		for (i=0; i< n; i++) {
+		int i;
+		for (i=0; i< n; i++) {
 //			debug_print("%c",response[i]);
-//			//					debug_print(" %0x",buf[i] & 0xff);
-//		}
-
+								debug_print(" %0x",response[i] & 0xff);
+		}
+		debug_print("\n");
 		if (n < 0) {
 			printf ("error %d reading data\n", errno);
 			radio_closeserial(fd);
