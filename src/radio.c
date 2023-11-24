@@ -37,6 +37,10 @@
 
 /* Forward declarations */
 int radio_reset_speed(int fd);
+int radio_close_program_mode(int fd);
+int radio_program_write(int fd, char * data, int len);
+int radio_program_read(int fd, char * buf, int len);
+int radio_program_read_cmp(int fd, char *buf, int len, char *expected);
 
 /* Local vars */
 static struct termios oldterminfo;
@@ -44,6 +48,7 @@ static struct termios oldterminfo;
 /**
  * radio_closeserial()
  * Restore the serial device settings and close the serial connection
+ * Flush any pending data to attempt recovery from errors
  */
 void radio_closeserial(int fd) {
 	tcflush(fd,TCIOFLUSH );
@@ -79,7 +84,7 @@ int radio_openserial(char *devicename) {
     options = oldterminfo;
 
     /*
-    * Set the baud rates to 9600...
+    * Set the baud rates to 9600, which is the default for the serial connection
     */
     if (cfsetispeed(&options, B9600) == -1) {
         perror("openserial(): cfsetispeed()");
@@ -121,6 +126,7 @@ int radio_openserial(char *devicename) {
     return fd;
 }
 
+/* Reset the speed of the terminal connection.  This is needed for program mode. */
 int radio_reset_speed(int fd) {
     struct termios attr;
 
@@ -161,23 +167,6 @@ int setRTS(int fd, int level) {
     }
     return 1;
 }
-
-//int program_read(int fd, char * buf, int len) {
-//	int i, n;
-//	int total = 0;
-//	while ((n = read(fd, buf, len)) != -1 && (total < len)) {
-//		total += n;
-//		for (i=0; i< n; i++) {
-//			//				debug_print("%c",buf[i]);
-//			printf(" %0x",buf[i] & 0xff);
-//			if ((i % 16 == 0) && (i != 0))
-//				printf("\n");
-//		}
-//		printf("|\n");
-//	}
-//	return total;
-//
-//}
 
 int radio_set_cross_band_mode() {
     if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_ON) != EXIT_SUCCESS) {
@@ -228,29 +217,53 @@ int radio_set_sstv_mode() {
 int radio_check_connection(char *serialdev) {
 	int rlen = 25;
 	char response[rlen];
+
+	/* Check the radio ID */
 	int n = radio_send_command(serialdev, RADIO_CMD_GET_ID, strlen(RADIO_CMD_GET_ID), response, rlen);
 	if (n < 0) {
 		debug_print("Can not send command to radio\n");
 		return EXIT_FAILURE;
 	}
-	response[n] = 0; // Terminate the string
 	if (strncmp(response, g_radio_id, strlen(g_radio_id)) != 0) {
 		debug_print("Can not connect to radio: %s.  Got id %s\n", g_radio_id, response);
 		return EXIT_FAILURE;
 	}
-	debug_print("CONNECTED TO RADIO: %s\n",response);
+//	debug_print("CONNECTED TO RADIO: %s\n",response);
 
+	/* Check the radio type */
 	n = radio_send_command(serialdev, RADIO_CMD_GET_TYPE, strlen(RADIO_CMD_GET_TYPE), response, rlen);
 	if (n < 0) {
-		debug_print("Can not send command to radio\n");
+		debug_print("Can not send get type command to radio\n");
 		return EXIT_FAILURE;
 	}
-	response[n] = 0; // Terminate the string
 	if (strncmp(response, g_radio_type, strlen(g_radio_type)) != 0) {
 		debug_print("Wrong radio type: %s Got type %s\n", g_radio_type, response);
 		return EXIT_FAILURE;
 	}
 	//debug_print("RADIO TYPE: %s",response);
+
+	/* Check the firmware versions */
+	n = radio_send_command(serialdev, RADIO_CMD_GET_MAIN_FIRMWARE, strlen(RADIO_CMD_GET_MAIN_FIRMWARE), response, rlen);
+	if (n < 0) {
+		debug_print("Can not send get main firmware command to radio\n");
+		return EXIT_FAILURE;
+	}
+	if (strncmp(response, g_radio_main_firmware, strlen(g_radio_main_firmware)) != 0) {
+		debug_print("Wrong radio main firmware: %s Got type %s\n", g_radio_main_firmware, response);
+		return EXIT_FAILURE;
+	}
+//	debug_print("MAIN FW: %s",response);
+
+	n = radio_send_command(serialdev, RADIO_CMD_GET_PANEL_FIRMWARE, strlen(RADIO_CMD_GET_PANEL_FIRMWARE), response, rlen);
+	if (n < 0) {
+		debug_print("Can not send get panel firmware command to radio\n");
+		return EXIT_FAILURE;
+	}
+	if (strncmp(response, g_radio_panel_firmware, strlen(g_radio_panel_firmware)) != 0) {
+		debug_print("Wrong radio panel firmware: %s Got type %s\n", g_radio_panel_firmware, response);
+		return EXIT_FAILURE;
+	}
+//	debug_print("PANEL FW: %s",response);
 
 	return EXIT_SUCCESS;
 }
@@ -267,7 +280,6 @@ int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel) {
 		debug_print("Can not send GET MEM A command to radio\n");
 		return EXIT_FAILURE;
 	}
-	response[n] = 0;
 	if (strncmp(RADIO_CMD_SET_MEM_MODE_A, response, strlen(RADIO_CMD_SET_MEM_MODE_A)) != 0) {
 		debug_print("A band Not in Mem mode, switching\n");
 		n = radio_send_command(serialdev, RADIO_CMD_SET_MEM_MODE_A, strlen(RADIO_CMD_SET_MEM_MODE_A), response, rlen);
@@ -280,7 +292,6 @@ int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel) {
 		debug_print("Can not send GET MEM B command to radio\n");
 		return EXIT_FAILURE;
 	}
-	response[n] = 0;
 	if (strncmp(RADIO_CMD_SET_MEM_MODE_B, response, strlen(RADIO_CMD_SET_MEM_MODE_B)) != 0) {
 		debug_print("B band Not in Mem mode, switching\n");
 		n = radio_send_command(serialdev, RADIO_CMD_SET_MEM_MODE_B, strlen(RADIO_CMD_SET_MEM_MODE_B), response, rlen);
@@ -300,10 +311,7 @@ int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel) {
 		debug_print("Can not send command %s to radio\n", command);
 		return EXIT_FAILURE;
 	}
-	response[n] = 0;
-	debug_print("MR: %s",response);
-
-	// TODO = check the channel was set or return error
+//	debug_print("MR: %s",response);
 
 	strlcpy(command, RADIO_CMD_MEM_CHANNEL, sizeof(command));
 	strlcat(command, "1,", sizeof(command));
@@ -314,8 +322,7 @@ int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel) {
 		debug_print("Can not send command %s to radio\n", command);
 		return EXIT_FAILURE;
 	}
-	response[n] = 0;
-	debug_print("MR: %s",response);
+//	debug_print("MR: %s",response);
 
 	return EXIT_SUCCESS;
 }
@@ -336,12 +343,19 @@ int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel) {
  *
  */
 int radio_program_pm(char *serialdev, int pm, int cross_band_repeater) {
+    return radio_program_pm_and_data_band(serialdev,pm,cross_band_repeater, -1, -1);
+}
+int radio_program_pm_and_data_band(char *serialdev, int pm, int cross_band_repeater, int ext_data_band, int ext_data_speed) {
 	char buf[1024];
+    char zero_six[1] = {0x06};
 
+	/* Confirm that we are talking to the correct radio */
 	if (radio_check_connection(serialdev) != EXIT_SUCCESS) {
 		return EXIT_FAILURE;
 	}
 
+	/* Open a serial connection that we use throughout the programming session.  Start at default
+	 * com port speed - 9600 bps */
     int fd = radio_openserial(serialdev);
     if (!fd) {
         fprintf(stderr, "Error while initializing %s.\n", serialdev);
@@ -350,6 +364,7 @@ int radio_program_pm(char *serialdev, int pm, int cross_band_repeater) {
 
     tcflush(fd,TCIOFLUSH ); // clear any existing data
 
+    /* Write the bytes to put the radio in programming mode */
     char * prog_mode = "0M PROGRAM\r";
     int len = strlen(prog_mode);
     int p = write(fd, prog_mode, len);
@@ -359,18 +374,10 @@ int radio_program_pm(char *serialdev, int pm, int cross_band_repeater) {
     	return EXIT_FAILURE;
     }
 
-	usleep(100 * 1000);
-
     /* Wait for 3 bytes */
+	usleep(50 * 1000);
     int n = read(fd, buf, 3);
-    if (strncmp("0M\r",buf,3) != 0) {
-    int i;	    for (i=0; i< n; i++) {
-    	    	//				debug_print("%c",buf[i]);
-    	    	printf(" %0x",buf[i] & 0xff);
-    	    	if ((i % 16 == 0) && (i != 0))
-    	    		printf("\n");
-    	    }
-    	    printf("|\n");
+    if (n != 3 || strncmp("0M\r",buf,3) != 0) {
     	fprintf(stderr, "ERROR: Could not set radio into program mode. Mising 3 byte response\n");
     	radio_closeserial(fd);
     	return EXIT_FAILURE;
@@ -386,27 +393,10 @@ int radio_program_pm(char *serialdev, int pm, int cross_band_repeater) {
      * X-band repeater and the PM channel number */
     char dataR1[5] = {0x52, 0x00, 0x00, 0X00, 0x17};
     len = sizeof(dataR1);
-    p = write(fd, dataR1, len);
-    if (p != len) {
-    	fprintf(stderr, "Error writing dataR1.  Sent %d but %d written\n",len, p);
-    	radio_closeserial(fd);
-    	return EXIT_FAILURE;
-    }
-    usleep(50 * 1000);
+    if (radio_program_write(fd, dataR1, len) != EXIT_SUCCESS) return EXIT_FAILURE;
+    len = 0x17 + 5;
+    if (radio_program_read(fd, buf, len) != EXIT_SUCCESS) return EXIT_FAILURE;
 
-    n = read(fd, buf, 0x17+5);
-//    for (i=0; i< n; i++) {
-//    	//				debug_print("%c",buf[i]);
-//    	printf(" %0x",buf[i] & 0xff);
-//    	if ((i % 16 == 0) && (i != 0))
-//    		printf("\n");
-//    }
-//    printf("|\n");
-    if (n != 0x17+5) {
-    	fprintf(stderr, "Error reading data.  Requested %d but %d returned\n",0x17+5, n);
-    	radio_closeserial(fd);
-    	return EXIT_FAILURE;
-    }
 //    printf("TRANSPONDER: %d\n", buf[0x10 + 5]);
 //    printf("PM CHANNEL: %d\n", buf[0x16 + 5]);
 
@@ -414,78 +404,98 @@ int radio_program_pm(char *serialdev, int pm, int cross_band_repeater) {
     buf[0x10 + 5] = cross_band_repeater; // cross band repeater bit
     buf[0x16 + 5] = pm; // PM Channel.  Only 0 can have the cross band repeater
 
-    len = 0x17 + 5;
-    p = write(fd, buf, len);
-    if (p != len) {
-    	fprintf(stderr, "Error writing dataW1.  Sent %d but %d written\n",len, p);
-    	radio_closeserial(fd);
-    	return EXIT_FAILURE;
-    }
+    if (radio_program_write(fd, buf, len) != EXIT_SUCCESS) return EXIT_FAILURE;
 
     /* Check that we received the 0x06 ack */
-    usleep(50 * 1000);
-    n = read(fd, buf, 1);
-    if (n!=1 || buf[0] != 0x06) {
-    	fprintf(stderr, "Error reading data.  Requested %d but %d returned\n",1, n);
-    	radio_closeserial(fd);
-    	return EXIT_FAILURE;
+    if (radio_program_read_cmp(fd, buf, 1, zero_six) != EXIT_SUCCESS) return EXIT_FAILURE;
+
+    if (ext_data_band != -1) {
+    	/* Now check the external data band settings.  There are 6 memory regions starting at 0x200
+    	 * and each 512 bytes long.  The databand is further offset at 0x175 and the speed is at 0x176 */
+    	/* Send a request to read 0x10 bytes of data.  */
+    	char dataR2[5] = {0x52, 0x00, 0x03, 0x75, 0x2};
+    	len = sizeof(dataR2);
+        if (radio_program_write(fd, dataR2, len) != EXIT_SUCCESS) return EXIT_FAILURE;
+
+        len = 0x2 + 5;
+        if (radio_program_read(fd, buf, len) != EXIT_SUCCESS) return EXIT_FAILURE;
+    	//    printf("DATA BAND: %d\n", buf[5]);
+    	//    printf("SPEED: %d\n", buf[6]);
+
+    	/* Now write the same data back but set the bytes for data band and speed for this PM */
+    	buf[5] = ext_data_band; // external data band.  1 = band B, 2 = band A TX, band B RX
+    	buf[6] = ext_data_speed; // speed
+
+        if (radio_program_write(fd, buf, len) != EXIT_SUCCESS) return EXIT_FAILURE;
+
+    	/* Check that we received the 0x06 ack */
+        if (radio_program_read_cmp(fd, buf, 1, zero_six) != EXIT_SUCCESS) return EXIT_FAILURE;
     }
 
-    /* Now check the external data band settings.  There are 6 memory regions starting at 0x200
-     * and each 512 bytes long.  The databand is further offset at 0x175 and the speed is at 0x176 */
-    /* Send a request to read 0x10 bytes of data.  */
-    char dataR2[5] = {0x52, 0x00, 0x03, 0x75, 0x2};
-    len = sizeof(dataR2);
-    p = write(fd, dataR2, len);
+    if (radio_close_program_mode(fd) != EXIT_SUCCESS)
+    	return EXIT_FAILURE;
+
+    /* Wait for radio to come back up and confirm we can talk to it */
+    int loop_safety_limit = 5;
+    usleep(250*1000); // 200ms seems to be the minimum
+	while ((radio_check_connection(serialdev) != EXIT_SUCCESS) && (loop_safety_limit > 0)) {
+		usleep(250*1000);
+		loop_safety_limit--;
+	}
+
+    return EXIT_SUCCESS;
+}
+
+int radio_program_write(int fd, char * data, int len) {
+    int p = write(fd, data, len);
     if (p != len) {
-    	fprintf(stderr, "Error writing dataR1.  Sent %d but %d written\n",len, p);
-    	radio_closeserial(fd);
+    	fprintf(stderr, "Error writing data.  Sent %d bytes but only %d written\n",len, p);
+    	radio_close_program_mode(fd);
     	return EXIT_FAILURE;
     }
     usleep(50 * 1000);
+	return EXIT_SUCCESS;
+}
 
-    n = read(fd, buf, 0x2+5);
+int radio_program_read_cmp(int fd, char *buf, int len, char *expected) {
+    if (radio_program_read(fd, buf, len) != EXIT_SUCCESS) return EXIT_FAILURE;
     int i;
-    for (i=0; i< n; i++) {
-    	//				debug_print("%c",buf[i]);
-    	printf(" %0x",buf[i] & 0xff);
-    	if ((i % 16 == 0) && (i != 0))
-    		printf("\n");
-    }
-    printf("|\n");
-    if (n != 0x2+5) {
-    	fprintf(stderr, "Error reading data.  Requested %d but %d returned\n",0x2+5, n);
-    	radio_closeserial(fd);
+    for (i=0; i< len; i++)
+    if (buf[i] != expected[i]) {
+    	fprintf(stderr, "Error with received response.  Requested %s but %s returned\n",expected, buf);
+    	radio_close_program_mode(fd);
     	return EXIT_FAILURE;
     }
-    printf("DATA BAND: %d\n", buf[5]);
-    printf("SPEED: %d\n", buf[6]);
+    return EXIT_SUCCESS;
+}
 
-    /* Now write the same data back but set the bytes for data band and speed for this PM */
-    buf[5] = 2; // external data band.  1 = band B, 2 = band A TX, band B RX
-    buf[6] = 1; // speed
-
-    len = 0x2 + 5;
-    p = write(fd, buf, len);
-    if (p != len) {
-    	fprintf(stderr, "Error writing TNC mode and speed.  Sent %d but %d written\n",len, p);
-    	radio_closeserial(fd);
+int radio_program_read(int fd, char * buf, int len) {
+    usleep(10 * 1000);
+    int n = read(fd, buf, len);
+//    for (i=0; i< n; i++) {
+//    	//				debug_print("%c",buf[i]);
+//    	printf(" %0x",buf[i] & 0xff);
+//    	if ((i % 16 == 0) && (i != 0))
+//    		printf("\n");
+//    }
+//    printf("|\n");
+    buf[n] = 0; /* Terminate in case we treat this as a string */
+    if (n != len) {
+    	fprintf(stderr, "Error reading data.  Requested %d but %d returned\n",0x17+5, n);
+    	radio_close_program_mode(fd);
     	return EXIT_FAILURE;
     }
+    return EXIT_SUCCESS;
+}
 
-    /* Check that we received the 0x06 ack */
-    usleep(50 * 1000);
-    n = read(fd, buf, 1);
-    if (n!=1 || buf[0] != 0x06) {
-    	fprintf(stderr, "Error reading data.  Requested %d but %d returned\n",1, n);
-    	radio_closeserial(fd);
-    	return EXIT_FAILURE;
-    }
+int radio_close_program_mode(int fd) {
+    tcflush(fd,TCIOFLUSH ); // clear any existing data and give terminal time to settle
 
+	char buf[256];
     /* Now write an E to exit programming mode*/
     char data[] = {0x45};
-    len = sizeof(data);
-    p = write(fd, data, len);
+    int len = sizeof(data);
+    int p = write(fd, data, len);
     if (p != len) {
     	fprintf(stderr, "Error writing data.  Sent %d but %d written\n",len, p);
     	radio_closeserial(fd);
@@ -494,7 +504,7 @@ int radio_program_pm(char *serialdev, int pm, int cross_band_repeater) {
 
     /* Check that we received the 0x06 ack */
 	usleep(50 * 1000);
-	n = read(fd, buf, 1);
+	int n = read(fd, buf, 1);
     if (n!=1 || buf[0] != 0x06) {
     	fprintf(stderr, "Error reading data.  Requested %d but %d returned\n",1, n);
     	radio_closeserial(fd);
@@ -502,14 +512,7 @@ int radio_program_pm(char *serialdev, int pm, int cross_band_repeater) {
     }
     radio_closeserial(fd);
 
-    /* Wait for radio to come back up*/
-    usleep(250*1000);
-	while (radio_check_connection(serialdev) != EXIT_SUCCESS) {
-		usleep(250*1000);
-	}
-
-
-    return EXIT_SUCCESS;
+	return EXIT_SUCCESS;
 }
 
 /*
@@ -547,6 +550,7 @@ int radio_send_command(char *serialdev, char * data, int len, char *response, in
 			radio_closeserial(fd);
 			return -1;
 		}
+		response[n] = 0; // terminate the string
 /*
 		int i;
 		for (i=0; i< n; i++) {

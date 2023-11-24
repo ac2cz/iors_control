@@ -35,12 +35,16 @@
 int g_verbose = false;
 int g_frames_queued = 0;
 
-/* These global variables are in the config file */
+/* These global variables are in the iors_control.config file.  This defines their default value
+ * but it is almost certainly overwritten in the config files.  It should be
+ * changed there. */
 int g_bit_rate = 1200;
 char g_callsign[MAX_CALLSIGN_LEN] = "NA1ISS-12";
 char g_radio_id[15] = "ID TM-D710G";
 char g_radio_type[15] = "TY K,0,0,1,0";
-char g_serial_dev[MAX_FILE_PATH_LEN] = "/dev/ttyUSBX";
+char g_radio_main_firmware[25] = "FV 0,1.00,1.00,A,1";
+char g_radio_panel_firmware[25] = "TY K,0,0,1,0";
+char g_serial_dev[MAX_FILE_PATH_LEN] = "/dev/ttyUSB0";
 int g_max_frames_in_tx_buffer = 2;
 
 int main() {
@@ -63,12 +67,12 @@ int main() {
     		return EXIT_FAILURE;
     	}
 
-/*
-    if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF) != EXIT_SUCCESS) {
+
+    if (radio_program_pm_and_data_band(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF, RADIO_EXT_DATA_BAND_TXA_RXB, RADIO_EXT_DATA_SPEED_9600) != EXIT_SUCCESS) {
     	debug_print("FATAL ERROR: Can not setup the radio\n");
     	return EXIT_FAILURE;
     }
-*/
+
 
     if (radio_set_channel(g_serial_dev, RADIO_RPT01_TX_CHANNEL, RADIO_RPT01_RX_CHANNEL) != EXIT_SUCCESS) {
     	debug_print("ERROR: Can't change channels\n");

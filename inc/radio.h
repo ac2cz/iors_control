@@ -34,6 +34,8 @@
 
 #define RADIO_CMD_GET_ID "ID\r"
 #define RADIO_CMD_GET_TYPE "TY\r"
+#define RADIO_CMD_GET_MAIN_FIRMWARE "FV 0\r"
+#define RADIO_CMD_GET_PANEL_FIRMWARE "FV 1\r"
 
 #define RADIO_CMD_GET_MEM_VFO_MODE_A "VM 0\r"
 #define RADIO_CMD_GET_MEM_VFO_MODE_B "VM 1\r"
@@ -52,6 +54,14 @@
 
 #define RADIO_CMD_MEM_CHANNEL "MR "
 
+#define RADIO_EXT_DATA_BAND_A 0
+#define RADIO_EXT_DATA_BAND_B 1
+#define RADIO_EXT_DATA_BAND_TXA_RXB 2
+#define RADIO_EXT_DATA_BAND_TXB_RXA 3
+#define RADIO_EXT_DATA_SPEED_1200 0
+#define RADIO_EXT_DATA_SPEED_9600 1
+
+
 #define RADIO_RPT01_TX_CHANNEL 201
 #define RADIO_RPT01_RX_CHANNEL 202
 #define RADIO_SSTV_TX_CHANNEL 300
@@ -65,6 +75,7 @@ int radio_set_cross_band_repeater_mode();
 int radio_set_aprs_mode();
 int radio_set_sstv_mode();
 int radio_program_pm(char *serialdev, int pm, int cross_band_repeater);
+int radio_program_pm_and_data_band(char *serialdev, int pm, int cross_band_repeater, int ext_data_band, int ext_data_speed);
 int radio_send_command(char *serialdev, char * data, int len, char *response, int rlen);
 int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel);
 

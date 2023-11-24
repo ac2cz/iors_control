@@ -65,6 +65,10 @@ void load_config() {
 					strlcpy(g_radio_id, value,sizeof(g_radio_id));
 				} else if (strcmp(key, CONFIG_RADIO_TYPE) == 0) {
 					strlcpy(g_radio_type, value,sizeof(g_radio_type));
+				} else if (strcmp(key, CONFIG_RADIO_MAIN_FIRMWARE) == 0) {
+					strlcpy(g_radio_main_firmware, value,sizeof(g_radio_main_firmware));
+				} else if (strcmp(key, CONFIG_RADIO_PANEL_FIRMWARE) == 0) {
+					strlcpy(g_radio_panel_firmware, value,sizeof(g_radio_panel_firmware));
 				} else if (strcmp(key, CONFIG_MAX_FRAMES_IN_TX_BUFFER) == 0) {
 					int n = atoi(value);
 					g_max_frames_in_tx_buffer = n;
