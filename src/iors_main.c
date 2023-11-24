@@ -43,7 +43,7 @@ char g_callsign[MAX_CALLSIGN_LEN] = "NA1ISS-12";
 char g_radio_id[15] = "ID TM-D710G";
 char g_radio_type[15] = "TY K,0,0,1,0";
 char g_radio_main_firmware[25] = "FV 0,1.00,1.00,A,1";
-char g_radio_panel_firmware[25] = "TY K,0,0,1,0";
+char g_radio_panel_firmware[25] = "FV 1,1.00,1.01,A,1";
 char g_serial_dev[MAX_FILE_PATH_LEN] = "/dev/ttyUSB0";
 int g_max_frames_in_tx_buffer = 2;
 

@@ -114,6 +114,7 @@ int radio_openserial(char *devicename) {
             |INLCR|IGNCR|ICRNL|IXON);
     options.c_oflag &= ~OPOST; /* Raw output */
 
+
     /*
     * Set the new options for the port...
     */
@@ -376,6 +377,13 @@ int radio_program_pm_and_data_band(char *serialdev, int pm, int cross_band_repea
 
     /* Wait for 3 bytes */
 	usleep(50 * 1000);
+//	int bytes = 0;
+//	int loop_safety_limit = 500;
+//	while (bytes < 3 && loop_safety_limit > 0) {
+//		usleep(1000);
+//		ioctl(fd, FIONREAD, &bytes);
+//		loop_safety_limit--;
+//	}
     int n = read(fd, buf, 3);
     if (n != 3 || strncmp("0M\r",buf,3) != 0) {
     	fprintf(stderr, "ERROR: Could not set radio into program mode. Mising 3 byte response\n");
@@ -446,6 +454,8 @@ int radio_program_pm_and_data_band(char *serialdev, int pm, int cross_band_repea
     return EXIT_SUCCESS;
 }
 
+/* write bytes in progrm mode and confirm that they are written.  An error
+ * triggers exit from program mode and EXIT_FAILURE is returned */
 int radio_program_write(int fd, char * data, int len) {
     int p = write(fd, data, len);
     if (p != len) {
@@ -457,6 +467,8 @@ int radio_program_write(int fd, char * data, int len) {
 	return EXIT_SUCCESS;
 }
 
+/* Read bytes in program mode and compare the response to an expected set of bytes.
+ * If it does not match then exit program mode and return EXIT_FAILURE */
 int radio_program_read_cmp(int fd, char *buf, int len, char *expected) {
     if (radio_program_read(fd, buf, len) != EXIT_SUCCESS) return EXIT_FAILURE;
     int i;
@@ -469,6 +481,8 @@ int radio_program_read_cmp(int fd, char *buf, int len, char *expected) {
     return EXIT_SUCCESS;
 }
 
+/* Read bytes in program mode and confirm we received the expected number.
+ * Terminate the bytes with a zero in case we treat it as a string */
 int radio_program_read(int fd, char * buf, int len) {
     usleep(10 * 1000);
     int n = read(fd, buf, len);
@@ -488,6 +502,8 @@ int radio_program_read(int fd, char * buf, int len) {
     return EXIT_SUCCESS;
 }
 
+/* Attempt to exit programming mode and close the serial port.  First flush the
+ * serial device in an attempt to recover from an error situation. */
 int radio_close_program_mode(int fd) {
     tcflush(fd,TCIOFLUSH ); // clear any existing data and give terminal time to settle
 
