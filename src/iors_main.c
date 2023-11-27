@@ -69,7 +69,7 @@ int main() {
 
 
     if (radio_program_pm_and_data_band(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF, RADIO_EXT_DATA_BAND_TXA_RXB, RADIO_EXT_DATA_SPEED_9600) != EXIT_SUCCESS) {
-    	debug_print("FATAL ERROR: Can not setup the radio\n");
+    	error_print("FATAL ERROR: Can not setup the radio\n");
     	return EXIT_FAILURE;
     }
 

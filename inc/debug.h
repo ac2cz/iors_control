@@ -38,12 +38,16 @@
  * See: https://stackoverflow.com/questions/1644868/define-macro-for-debug-printing-in-c
  *
  * */
+
+/* These are only printed when DEBUG is 1 */
 #define debug_print(fmt, ...) \
             do { if (DEBUG) fprintf(stdout, fmt, ##__VA_ARGS__); } while (0)
 
+/* These are only printed if verbose is on */
 #define verbose_print(fmt, ...) \
             if (g_verbose) fprintf(stdout, fmt, ##__VA_ARGS__);
 
+/* These are always printed.  Use sparingly. */
 #define error_print(fmt, ...) \
             fprintf(stderr, "ERROR: %s:%d:%s(): " fmt, __FILE__, \
                                 __LINE__, __func__, ##__VA_ARGS__);

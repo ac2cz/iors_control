@@ -87,11 +87,11 @@ int radio_openserial(char *devicename) {
     * Set the baud rates to 9600, which is the default for the serial connection
     */
     if (cfsetispeed(&options, B9600) == -1) {
-        perror("openserial(): cfsetispeed()");
+        error_print("openserial(): cfsetispeed()");
         return 0;
     }
     if (cfsetospeed(&options, B9600) == -1) {
-        perror("openserial(): cfsetospeed()");
+    	error_print("openserial(): cfsetospeed()");
         return 0;
     }
     /*
@@ -119,7 +119,7 @@ int radio_openserial(char *devicename) {
     * Set the new options for the port...
     */
     if (tcsetattr(fd, TCSANOW, &options) == -1) { //TCSANOW constant specifies that all changes should occur immediatel
-    	printf("init serial error: tcsetattr()\n");
+    	error_print("init serial error: tcsetattr()\n");
     	radio_closeserial(fd);
     	return 0;
     }
@@ -132,19 +132,19 @@ int radio_reset_speed(int fd) {
     struct termios attr;
 
 	if (tcgetattr(fd, &attr) == -1) {
-	            perror("openserial(): tcgetattr()");
+		error_print("openserial(): tcgetattr()");
 	            return -1;
 	    }
     if (cfsetispeed(&attr, B57600) == -1) {
-        perror("openserial(): cfsetispeed()");
+    	error_print("openserial(): cfsetispeed()");
         return 0;
     }
     if (cfsetospeed(&attr, B57600) == -1) {
-        perror("openserial(): cfsetospeed()");
+    	error_print("openserial(): cfsetospeed()");
         return 0;
     }
     if (tcsetattr (fd, TCSANOW, &attr) != 0) {
-      	 printf ("error %d resetting term speed", errno);
+    	error_print ("error %d resetting term speed", errno);
       	 return -1;
     }
     return EXIT_SUCCESS;
@@ -155,7 +155,7 @@ int setRTS(int fd, int level) {
     int status;
 
     if (ioctl(fd, TIOCMGET, &status) == -1) {
-        perror("setRTS(): TIOCMGET");
+    	error_print("setRTS(): TIOCMGET");
         return 0;
     }
     if (level)
@@ -163,7 +163,7 @@ int setRTS(int fd, int level) {
     else
         status &= ~TIOCM_RTS;
     if (ioctl(fd, TIOCMSET, &status) == -1) {
-        perror("setRTS(): TIOCMSET");
+    	error_print("setRTS(): TIOCMSET");
         return 0;
     }
     return 1;
@@ -171,7 +171,7 @@ int setRTS(int fd, int level) {
 
 int radio_set_cross_band_mode() {
     if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_ON) != EXIT_SUCCESS) {
-    	debug_print("FATAL ERROR: Can not setup the radio\n");
+    	debug_print("ERROR: Can not program the radio\n");
     	return EXIT_FAILURE;
     }
 
@@ -184,7 +184,7 @@ int radio_set_cross_band_mode() {
 
 int radio_set_aprs_mode() {
     if (radio_program_pm(g_serial_dev, RADIO_PM3, RADIO_XBAND_RPT_OFF) != EXIT_SUCCESS) {
-    	debug_print("FATAL ERROR: Can not setup the radio\n");
+    	debug_print("ERROR: Can not program the radio\n");
     	return EXIT_FAILURE;
     }
 
@@ -197,7 +197,7 @@ int radio_set_aprs_mode() {
 
 int radio_set_sstv_mode() {
     if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF) != EXIT_SUCCESS) {
-    	debug_print("FATAL ERROR: Can not setup the radio\n");
+    	debug_print("ERROR: Can not program the radio\n");
     	return EXIT_FAILURE;
     }
 
