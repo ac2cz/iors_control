@@ -188,7 +188,7 @@ int radio_set_aprs_mode() {
     	return EXIT_FAILURE;
     }
 
-    if (radio_set_channel(g_serial_dev, RADIO_SSTV_TX_CHANNEL, RADIO_SSTV_RX_CHANNEL) != EXIT_SUCCESS) {
+    if (radio_set_channel(g_serial_dev, RADIO_SSTV_TX_CHANNEL, RADIO_SSTV_TX_CHANNEL) != EXIT_SUCCESS) {
     	debug_print("ERROR: Can't change channels\n");
     	return EXIT_FAILURE;
 	}
@@ -201,7 +201,7 @@ int radio_set_sstv_mode() {
     	return EXIT_FAILURE;
     }
 
-    if (radio_set_channel(g_serial_dev, RADIO_SSTV_TX_CHANNEL, RADIO_SSTV_RX_CHANNEL) != EXIT_SUCCESS) {
+    if (radio_set_channel(g_serial_dev, RADIO_SSTV_TX_CHANNEL, RADIO_RPT01_RX_CHANNEL) != EXIT_SUCCESS) {
     	debug_print("ERROR: Can't change channels\n");
     	return EXIT_FAILURE;
 	}

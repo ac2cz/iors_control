@@ -22,20 +22,28 @@
 #ifndef CONFIG_H_
 #define CONFIG_H_
 
+#include <stdbool.h>
 #include "debug.h"
+#include "common_config.h"
 
 #define VERSION __DATE__ " iors_control - Version 0.1"
-#define DEBUG 1
-#define true 1
-#define false 0
-#define MAX_CALLSIGN_LEN 10
-#define MAX_FILE_PATH_LEN 256
-#define AX25_MAX_DATA_LEN 2048
-#define AGW_PORT 8000
+
+#define TRUE true
+#define FALSE false
+
+/* IORS Control State machine */
+#define STATE_INIT 0
+#define STATE_RADIO_CONNECTED 1
+#define STATE_TNC_CONNECTED 2
+#define STATE_PACKET_MODE 3
+#define STATE_SSTV_MODE 4
+#define STATE_X_BAND_REPEATER_MODE 5
+#define STATE_X_SAFE_MODE 9
 
 /* These global variables are not in the config file */
 extern int g_run_self_test;    /* true when the self test is running */
 extern int g_verbose;          /* print verbose output when set */
+extern int g_iors_control_state; /* The state of the IORS control state machine */
 
 /* Define paramaters for config file */
 #define MAX_CONFIG_LINE_LENGTH 128
@@ -47,6 +55,9 @@ extern int g_verbose;          /* print verbose output when set */
 #define CONFIG_RADIO_TYPE "radio_type_str"
 #define CONFIG_RADIO_MAIN_FIRMWARE "radio_main_firmware_str"
 #define CONFIG_RADIO_PANEL_FIRMWARE "radio_panel_firmware_str"
+
+#define PID_COMMAND 0xBC
+#define PID_FILE 0xBB
 
 extern int g_bit_rate; /* the bit rate of the TNC - 1200 4800 9600. Change actual value in DireWolf) */
 extern char g_callsign[MAX_CALLSIGN_LEN];
