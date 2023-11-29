@@ -13,6 +13,9 @@
 #define AUTH_VECTOR_SIZE 32
 #define SW_COMMAND_SIZE 18
 #define OUR_ADDRESS 0x1A // Initial test address - redundant as we have a callsign??
+#define COMMAND_TIME_TOLLERANCE 30 // An identical command received within this many seconds is ACK but ignored
+#define MAX_COMMAND_TIME 2082690000 //Dec 31 2035
+#define MIN_COMMAND_TIME 1672462800 //Dec 31 2022
 
 /*
  * Following is the data structure representing software uplink commands
@@ -24,8 +27,8 @@ typedef struct  __attribute__((__packed__)) {
 
 
 typedef struct  __attribute__((__packed__)){
-	uint16_t resetNumber;
-	unsigned int secondsSinceReset:24; // Actually this will be pairs of seconds, i.e. seconds/2
+	uint32_t dateTime;
+	uint8_t reserved;
 	uint8_t address;
 	uint8_t special;
 	uint8_t namespaceNumber;
@@ -73,6 +76,7 @@ typedef enum {
 	,SwCmdPacsatNumberOfCommands
 }SWPacsatCommands;
 
+int load_last_commmand_time();
 int DecodeSoftwareCommand(SWCmdUplink *softwareCommand);
 int AuthenticateSoftwareCommand(SWCmdUplink *uplink);
 int DispatchSoftwareCommand(SWCmdUplink *uplink,bool local);

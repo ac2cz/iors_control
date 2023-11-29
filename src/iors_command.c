@@ -15,10 +15,46 @@
 #include "radio.h"
 
 /* Forwards */
+int store_last_command_time();
 int CommandTimeOK(SWCmdUplink *uplink);
 int OpsSWCommands(CommandAndArgs *comarg);
 int TlmSWCommands(CommandAndArgs *comarg);
 
+uint32_t last_command_time = 0x0; /* Keep track of the time that the last command was received */
+
+int load_last_commmand_time() {
+	FILE * fd = fopen(g_iors_last_command_time_path, "r");
+	if (fd == NULL) {
+		// no command time file, make a new one
+		fd = fopen(g_iors_last_command_time_path, "w");
+		if (fd == NULL) {
+			error_print("Could not create the time command file\n");
+			// This is not fatal, but we dont remember the command time after restart
+		}
+		fprintf(fd, "%d\n", last_command_time);
+	} else {
+		char line [ MAX_CONFIG_LINE_LENGTH ]; /* or other suitable maximum line size */
+		fgets ( line, sizeof line, fd ); /* read a line */
+		line[strcspn(line,"\n")] = 0; // Move the nul termination to get rid of the new line
+		last_command_time = atol(line);
+		//int pid = strtol(line, NULL, 0);
+		debug_print("Last Command Time was: %d\n",last_command_time);
+	}
+	close(fd);
+	return EXIT_SUCCESS;
+}
+
+int store_last_command_time() {
+	FILE * fd = fopen(g_iors_last_command_time_path, "w");
+	if (fd != NULL) {
+		fprintf(fd, "%d\n", last_command_time);
+	} else {
+		// Not fatal but we will forget the time when we restart
+		error_print("Could not write to the time command file\n");
+	}
+	close(fd);
+	return EXIT_SUCCESS;
+}
 
 /**
  * DecodeSoftwareCommand()
@@ -27,25 +63,16 @@ int TlmSWCommands(CommandAndArgs *comarg);
 int DecodeSoftwareCommand(SWCmdUplink *softwareCommand) {
 
     if(AuthenticateSoftwareCommand(softwareCommand)){
-        debug_print("\n\rCommand Authenticated!\n");
-
-        softwareCommand->comArg.arguments[0] = (softwareCommand->comArg.arguments[0]);
-        softwareCommand->comArg.arguments[1] = (softwareCommand->comArg.arguments[1]);
-        softwareCommand->comArg.arguments[2] = (softwareCommand->comArg.arguments[2]);
-        softwareCommand->comArg.arguments[3] = (softwareCommand->comArg.arguments[3]);
-
+        debug_print("Command Authenticated!\n");
         /*
          * Here we have a command that was received on the uplink and ready to act on.
          */
-
         int rc = DispatchSoftwareCommand(softwareCommand,true);
-
         return rc;
     } else {
-        debug_print("\n\rCommand does not authenticate\n");
+        debug_print("Command does not authenticate\n");
     }
     return false;
-
 }
 
 int AuthenticateSoftwareCommand(SWCmdUplink *uplink) {
@@ -76,61 +103,42 @@ int AuthenticateSoftwareCommand(SWCmdUplink *uplink) {
 
 }
 
+/**
+ * CommandTimeOK()
+ * Here we attempt to prevent a replay attack.  Firstly we keep track of the time that the last
+ * command was received.  Our clock on the space station may be wrong but we assume the time
+ * in the receieved packet is correct.  A command can not have a time that is the same or
+ * before a previous command.
+ *
+ * If a command was not received but was intercepted by another station then they could replay the
+ * command.  This is a small risk because we probablly wanted to send the command anyway.  This risk
+ * is also ended once a new command is received as the time of the later packet will have been saved.
+ *
+ * If our clock is working on the station then we could check that the time on a received packet is
+ * close to the actual time.  This mitigates replay attacks for packets that are not received but
+ * we may not be able to send commands if the time on the station is wrong or corrupted.
+ *
+ * One other nuance.  It is common for the ground station to send a command, which is accepted, but
+ * to miss the ACK.  It then sends the command again.  These commands have the same dateTime.  A
+ * duplicate command received within a tolerance period based should receive an ACK but should
+ * not make further changes.  This means that commands should check if they have just executed and
+ * do nothing if called again.  e.g. don't change channels if already on that channel.
+ *
+ */
 int CommandTimeOK(SWCmdUplink *uplink) {
-//    logicalTime_t timeNow;
-//    static int lastCommandTime = 0;
-//    int secondsOff,uplinkSeconds;
-//    uint16_t uplinkEpoch;
-    int goodTime = true;
-//
-//    /*
-//     * Here we are checking the time included in the command to make sure it is within the appropriate
-//     * range of the satellite time.  This is to avoid replay attacks.
-//     *
-//     * The algorithm is as follows:
-//     *
-//     * 1) The reset epoch in the command must match the satellite exactly
-//     * 2) The seconds in the command MUST be greater than the seconds in the last command
-//     * 3) The seconds in the command has to be within a tolerance (specified in FoxConfig) of the satellite time
-//     */
-//    uplinkEpoch = ttohs(uplink->resetNumber);
-//    uplinkSeconds = ttoh24(uplink->secondsSinceReset);
-//
-//    if(CommandTimeEnabled){
-//        /*
-//         * If command time is not enabled, always return true, i.e. it's ok.
-//         * Also as a safety valve, allow us to disable the time check if we can't seem to get it right by
-//         * putting in a specific random number as the 4th argument for the disable command
-//         */
-//        if((uplink->namespaceNumber == SWCmdNSSpaceCraftOps) &&
-//                (uplink->comArg.command == SWCmdOpsEnableCommandTimeCheck)  &&
-//                (uplink->comArg.arguments[3] == SPECIAL_RANDOM_NUMBER)
-//        ) return true;
-//        getTimestamp(&timeNow);
-//        secondsOff = uplinkSeconds - timeNow.METcount;
-//        command_print("UplinkTime,delta %d/%d,%d\n\r",uplink->resetNumber,uplink->secondsSinceReset,secondsOff);
-//        if(
-//                /*
-//                 * The reset epoch in the command HAS to match the satellite, and the satellite time must not
-//                 * be greater than the "expiration time" in the command.
-//                 *
-//                 * In addition, to avoid a reply attack, the command HAS to be newer than the last command received.
-//                 * And to avoid totally circumventing this whole check, the transmitted time can't be too far behind
-//                 * or too far ahead of the current satellite time.
-//                 */
-//
-//                (uplinkEpoch != timeNow.IHUresetCnt)   || // The uplinked reset count is wrong
-//                (uplinkSeconds <= lastCommandTime)  || // The uplinked second time is less or same as that of last command
-//                (uplinkSeconds < timeNow.METcount) || // The uplinked command has expired
-//                (secondsOff < SECONDS_AUTHENTICATION_MAX_BEHIND) || // Uplinked time too far behind sat time
-//                (secondsOff > SECONDS_AUTHENTICATION_MAX_AHEAD)  // They uplink had an expiration time too far ahead
-//        ){
-//            goodTime = false;
-//            localErrorCollection.DCTCmdFailTimeCnt++;
-//        }
-//        if(goodTime)lastCommandTime = uplinkSeconds; // Do not allow the next command to have the same or earlier
-//    }
-    return goodTime;
+
+	if (last_command_time > MAX_COMMAND_TIME || last_command_time < MIN_COMMAND_TIME) {
+		// Then it is likely corrupt, set to zero for this check and take the time from the command
+		last_command_time = 0;
+	}
+    if ((uplink->dateTime + COMMAND_TIME_TOLLERANCE) <= last_command_time) {
+    	debug_print("Bad time on command!\n");
+    	return false;
+    } else {
+    	last_command_time = uplink->dateTime;
+    	store_last_command_time();
+    }
+    return true;
 }
 
 int DispatchSoftwareCommand(SWCmdUplink *uplink,bool local) {
@@ -164,8 +172,8 @@ int DispatchSoftwareCommand(SWCmdUplink *uplink,bool local) {
 //        //SetInternalSchedules(NoTimeCommandTimeout,TIMEOUT_NONE);
 //    }
 
-    debug_print("Namespace=%d,command=%d,arg=%d\n",nameSpace,uplink->comArg.command,
-                  uplink->comArg.arguments[0]);
+//    debug_print("Namespace=%d,command=%d,arg=%d\n",nameSpace,uplink->comArg.command,
+//                  uplink->comArg.arguments[0]);
 
     switch(nameSpace){
     case SWCmdNSOps: {
@@ -202,7 +210,7 @@ int OpsSWCommands(CommandAndArgs *comarg) {
         	}
         } else {
         	if (g_iors_control_state != STATE_SSTV_MODE) {
-        		debug_print("Disable Repeater\n\r");
+        		debug_print("Enable SSTV\n\r");
         		if (radio_set_sstv_mode() == EXIT_SUCCESS)
         			g_iors_control_state = STATE_SSTV_MODE;
         	}

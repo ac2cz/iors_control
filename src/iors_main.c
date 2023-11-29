@@ -27,6 +27,8 @@
 #include <pthread.h>
 #include <string.h>
 #include <signal.h>
+#include <sys/wait.h>
+#include <fcntl.h>
 
 /* Project include files */
 #include "radio.h"
@@ -44,7 +46,8 @@ int monitor_tnc_frames();
 int handle_command(char *from_callsign, unsigned char *data, int len);
 int send_ok(char *from_callsign);
 int send_err(char *from_callsign, int err);
-
+int start_program(char * command, char *argv[], char * logfile);
+int monitor_program(pid_t pid);
 
 /*
  *  GLOBAL VARIABLES defined here.  They are declared in config.h
@@ -55,6 +58,7 @@ int send_err(char *from_callsign, int err);
 int g_verbose = false;
 int g_frames_queued = 0;
 int g_iors_control_state = STATE_INIT;
+char pid_file_path[MAX_FILE_PATH_LEN] = "iors_control.pid";
 
 /* These global variables are in the iors_control.config file.  This defines their default value
  * but it is almost certainly overwritten in the config files.  It should be
@@ -67,13 +71,16 @@ char g_radio_main_firmware[25] = "FV 0,1.00,1.00,A,1";
 char g_radio_panel_firmware[25] = "FV 1,1.00,1.01,A,1";
 char g_serial_dev[MAX_FILE_PATH_LEN] = "/dev/ttyUSB0";
 int g_max_frames_in_tx_buffer = 2;
-
-
+char g_direwolf_path[MAX_FILE_PATH_LEN] = "/usr/local/bin/direwolf";
+char g_direwolf_logfile[MAX_FILE_PATH_LEN] = "/tmp/direwolf.log";
+char g_direwolf_config_path[MAX_FILE_PATH_LEN] = "~/direwolf.conf";
+char g_iors_last_command_time_path[MAX_FILE_PATH_LEN] = "iors_last_command_time.dat";
 
 
 /* Local variables */
 pthread_t tnc_listen_pthread;
 int frame_num = 0;
+pid_t direwolf_pid;
 
 /**
  * Print this help if the -h or --help command line options are used
@@ -89,10 +96,16 @@ void help(void) {
 	exit(EXIT_SUCCESS);
 }
 
+void cleanup() {
+	int tnc_close();
+	if (remove(pid_file_path) != 0) {
+		error_print("Could not remove the pid file at exit: %s\n", pid_file_path);
+	}
+}
+
 void signal_exit (int sig) {
 	debug_print (" Signal received, exiting ...\n");
-	// TODO - unregister the callsign and close connection to AGW
-	int tnc_close();
+	cleanup();
 	exit (0);
 }
 
@@ -101,7 +114,44 @@ void signal_load_config (int sig) {
 	// TODO SIHUP should reload the config perhaps
 }
 
+void exit_if_running() {
+	int my_pid = getpid();
+	FILE * fd = fopen(pid_file_path, "r");
+	if (fd == NULL) {
+		// no pid file, make a new one
+		fd = fopen(pid_file_path, "w");
+		if (fd == NULL) {
+			error_print("Could not create the pid file\n");
+			// This is not fatal, but we might we running twice..
+		}
+		fprintf(fd, "%d\n", my_pid);
+	} else {
+		char line [ MAX_CONFIG_LINE_LENGTH ]; /* or other suitable maximum line size */
+		fgets ( line, sizeof line, fd ); /* read a line */
+		line[strcspn(line,"\n")] = 0; // Move the nul termination to get rid of the new line
+		int pid = atoi(line);
+		//int pid = strtol(line, NULL, 0);
+		debug_print("pid file contains: %d\n",pid);
+		if (kill(pid,0) == -1) {
+			debug_print("But it was not running, making new pid file\n");
+			fd = fopen(pid_file_path, "w");
+			if (fd == NULL) {
+				error_print("Could not create the pid file\n");
+				// This is not fatal, but we might we running twice..
+			}
+			fprintf(fd, "%d\n", my_pid);
+		} else {
+			debug_print("Already running..\n");
+			fclose(fd);
+			exit(1);
+		}
+	}
+	fclose(fd);
+
+}
+
 int main(int argc, char *argv[])  {
+	exit_if_running();
 	signal (SIGQUIT, signal_exit);
 	signal (SIGTERM, signal_exit);
 	signal (SIGHUP, signal_load_config);
@@ -136,6 +186,7 @@ int main(int argc, char *argv[])  {
 		help();
 		return 0;
 	}
+    int rc = EXIT_SUCCESS;
 
 	printf("ARISS IORS Control Program\n");
 	printf("Build: %s\n", VERSION);
@@ -143,8 +194,8 @@ int main(int argc, char *argv[])  {
 	/* Load the config from disk */
     load_config();
 
-    int rc = EXIT_SUCCESS;
-
+    /* Load the last command time */
+    load_last_commmand_time();
 
 	/* Enter the IORS CONTROL State machine */
 	while(1) {
@@ -161,8 +212,6 @@ int main(int argc, char *argv[])  {
 			break;
 		case STATE_RADIO_CONNECTED:
 			/* Start Direwolf if it is not already running */
-			//TODO ..
-
 			/* Connect to direwolf*/
 			rc = tnc_connect("127.0.0.1", AGW_PORT, g_bit_rate, g_max_frames_in_tx_buffer);
 			if (rc == EXIT_SUCCESS) {
@@ -192,12 +241,20 @@ int main(int argc, char *argv[])  {
 
 				g_iors_control_state = STATE_TNC_CONNECTED;
 			} else {
-				sleep(60); // wait for TNC to become available
+		        char *argv[]={"direwolf","-q d","-r 48000",(char *)NULL};
+				direwolf_pid = start_program(g_direwolf_path,argv, g_direwolf_logfile);
+				if (direwolf_pid == -1) {
+					error_print("Can not start direwolf\n");
+					sleep(60);
+				} else {
+					sleep(3); // give tnc time to start
+				}
 			}
 			break;
 
 		case STATE_TNC_CONNECTED:
 			monitor_tnc_frames();
+			//monitor_program(direwolf_pid);
 			break;
 
 		case STATE_PACKET_MODE:
@@ -254,7 +311,7 @@ int main(int argc, char *argv[])  {
 //	debug_print("TNC MODE: %s",response);
 
 #endif
-
+    cleanup();
     return EXIT_SUCCESS;
 }
 
@@ -278,8 +335,7 @@ int monitor_tnc_frames() {
 
 					struct t_ax25_header *ax25_header;
 					ax25_header = (struct t_ax25_header *)frame.data;
-
-					debug_print("IORS Packet: pid: %02x \n", ax25_header->pid & 0xff);
+//					debug_print("IORS Packet: pid: %02x \n", ax25_header->pid & 0xff);
 					if ((ax25_header->pid & 0xff) == PID_COMMAND) {
 						handle_command(frame.header->call_from, frame.data, frame.header->data_len);
 
@@ -301,12 +357,12 @@ int handle_command(char *from_callsign, unsigned char *data, int len) {
     SWCmdUplink *sw_command;
     sw_command = (SWCmdUplink *)(data + sizeof(AX25_HEADER));
 
-    debug_print("Received Command %04x:%x addr: %d names: %d cmd %d from %s length %d\n",(sw_command->resetNumber), (sw_command->secondsSinceReset),
+    debug_print("Received Command %04x addr: %d names: %d cmd %d from %s length %d\n",(sw_command->dateTime),
                 sw_command->address, sw_command->namespaceNumber, (sw_command->comArg.command), from_callsign, len);
 
     /* Pass the data to the command processor */
     if(AuthenticateSoftwareCommand(sw_command)){
-    	debug_print("\n\rCommand Authenticated!\n");
+    	//debug_print("Command Authenticated!\n");
     	int rc = send_ok(from_callsign);
     	if (rc != EXIT_SUCCESS) {
     		debug_print("\n Error : Could not send OK Response to TNC \n");
@@ -317,7 +373,6 @@ int handle_command(char *from_callsign, unsigned char *data, int len) {
     	else
     		return EXIT_FAILURE;
     } else {
-
     	int r = send_err(from_callsign, 5);
     	if (r != EXIT_SUCCESS) {
     		debug_print("\n Error : Could not send ERR Response to TNC \n");
@@ -365,4 +420,60 @@ int send_err(char *from_callsign, int err) {
 	rc = send_raw_packet(g_callsign, from_callsign, PID_FILE, (unsigned char *)buffer, sizeof(buffer));
 
 	return rc;
+}
+
+int monitor_program(pid_t pid) {
+	int status;
+	pid_t w;
+
+	w = waitpid(pid, &status, WUNTRACED | WCONTINUED);
+	if (w == -1) {
+		perror("waitpid");
+		return(EXIT_FAILURE);
+	}
+
+	if (WIFEXITED(status)) {
+		printf("exited, status=%d\n", WEXITSTATUS(status));
+		return(EXIT_FAILURE);
+	} else if (WIFSIGNALED(status)) {
+		printf("killed by signal %d\n", WTERMSIG(status));
+		return(EXIT_FAILURE);
+	} else if (WIFSTOPPED(status)) {
+		printf("stopped by signal %d\n", WSTOPSIG(status));
+		return(EXIT_FAILURE);
+	} else if (WIFCONTINUED(status)) {
+		printf("continued\n");
+	}
+
+	return EXIT_SUCCESS;
+}
+
+/**
+ * start_program()
+ * Start the program given in the command
+ *
+ * Returns the PID of the started program or 0 of there was an error
+ */
+int start_program(char * command, char *argv[], char * logfile) {
+	/*Spawn a child to run the program.*/
+	    pid_t pid = fork();
+	    if (pid == -1) {
+	    	// fork failed
+	    	return -1;
+	    }
+	    if (pid==0) { /* child process */
+	    	printf("Starting %s PID is %ld\n", argv[0], (long) getpid());
+	    	int fd = open(logfile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+
+	    	dup2(fd, 1);   // make stdout go to file
+	    	dup2(fd, 2);   // make stderr go to file
+	    	close(fd);     // fd no longer needed - the dup'ed handles are sufficient
+
+	        //static char *argv[]={"echo","Foo is my name.",NULL};
+	        execv(command,argv);
+	        exit(127); /* only if execv fails */
+	    } else { /* pid!=0; parent process */
+
+	    }
+	    return pid;
 }

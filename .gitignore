@@ -35,6 +35,8 @@
 Debug/iors_control
 Release/iors_control
 iors_control.config
+iors_control.pid
+iors_last_command_time.dat
 
 # IDE files
 .settings

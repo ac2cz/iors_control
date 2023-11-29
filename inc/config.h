@@ -44,6 +44,10 @@
 extern int g_run_self_test;    /* true when the self test is running */
 extern int g_verbose;          /* print verbose output when set */
 extern int g_iors_control_state; /* The state of the IORS control state machine */
+extern char g_direwolf_path[MAX_FILE_PATH_LEN];
+extern char g_direwolf_logfile[MAX_FILE_PATH_LEN];
+extern char g_direwolf_config_path[MAX_FILE_PATH_LEN];
+extern char g_iors_last_command_time_path[MAX_FILE_PATH_LEN];
 
 /* Define paramaters for config file */
 #define MAX_CONFIG_LINE_LENGTH 128
