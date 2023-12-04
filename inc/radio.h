@@ -79,4 +79,8 @@ int radio_program_pm_and_data_band(char *serialdev, int pm, int cross_band_repea
 int radio_send_command(char *serialdev, char * data, int len, char *response, int rlen);
 int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel);
 
+void close_rts_serial(int fd);
+int open_rts_serial(char *devicename);
+void set_rts(int fd, int state);
+
 #endif /* RADIO_H_ */

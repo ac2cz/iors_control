@@ -13,6 +13,7 @@
 #include "hmac_sha256.h"
 #include "keyfile.h"
 #include "radio.h"
+#include "iors_controller.h"
 
 /* Forwards */
 int store_last_command_time();
@@ -40,7 +41,7 @@ int load_last_commmand_time() {
 		//int pid = strtol(line, NULL, 0);
 		debug_print("Last Command Time was: %d\n",last_command_time);
 	}
-	close(fd);
+	fclose(fd);
 	return EXIT_SUCCESS;
 }
 
@@ -52,7 +53,7 @@ int store_last_command_time() {
 		// Not fatal but we will forget the time when we restart
 		error_print("Could not write to the time command file\n");
 	}
-	close(fd);
+	fclose(fd);
 	return EXIT_SUCCESS;
 }
 
@@ -63,14 +64,14 @@ int store_last_command_time() {
 int DecodeSoftwareCommand(SWCmdUplink *softwareCommand) {
 
     if(AuthenticateSoftwareCommand(softwareCommand)){
-        debug_print("Command Authenticated!\n");
+        //debug_print("Command: Authenticated!\n");
         /*
          * Here we have a command that was received on the uplink and ready to act on.
          */
         int rc = DispatchSoftwareCommand(softwareCommand,true);
         return rc;
     } else {
-        debug_print("Command does not authenticate\n");
+        debug_print("Command: does not authenticate\n");
     }
     return false;
 }
@@ -132,7 +133,7 @@ int CommandTimeOK(SWCmdUplink *uplink) {
 		last_command_time = 0;
 	}
     if ((uplink->dateTime + COMMAND_TIME_TOLLERANCE) <= last_command_time) {
-    	debug_print("Bad time on command!\n");
+    	debug_print("Command: Bad time on command!\n");
     	return false;
     } else {
     	last_command_time = uplink->dateTime;
@@ -183,7 +184,7 @@ int DispatchSoftwareCommand(SWCmdUplink *uplink,bool local) {
         return TlmSWCommands(&uplink->comArg);
     }
     default:
-        printf("Unknown namespace %d\n\r",nameSpace);
+        printf("Command: Unknown namespace %d\n\r",nameSpace);
       //  localErrorCollection.DCTCmdFailNamespaceCnt++;
         return FALSE;
 
@@ -200,27 +201,39 @@ int OpsSWCommands(CommandAndArgs *comarg) {
     switch((int)comarg->command){
 
     case SWCmdOpsXBandRepeaterMode: {
-        bool turnOn;
-        turnOn = (comarg->arguments[0] != 0);
-        if(turnOn){
+       // bool turnOn;
+       // turnOn = (comarg->arguments[0] != 0);
+       // if(turnOn){
         	if (g_iors_control_state != STATE_X_BAND_REPEATER_MODE) {
-        		debug_print("Enable Repeater\n\r");
+        		debug_print("Command: Cross band Repeater mode\n");
         		if (radio_set_cross_band_mode() == EXIT_SUCCESS)
         			g_iors_control_state = STATE_X_BAND_REPEATER_MODE;
+        	} else {
+        		debug_print("Command: Already in Cross band Repeater mode\n");
         	}
-        } else {
-        	if (g_iors_control_state != STATE_SSTV_MODE) {
-        		debug_print("Enable SSTV\n\r");
-        		if (radio_set_sstv_mode() == EXIT_SUCCESS)
-        			g_iors_control_state = STATE_SSTV_MODE;
-        	}
-        }
+//        } else {
+//        	if (g_iors_control_state != STATE_SSTV_MODE) {
+//        		debug_print("Enable SSTV\n\r");
+//        		if (radio_set_sstv_mode() == EXIT_SUCCESS)
+//        			g_iors_control_state = STATE_SSTV_MODE;
+//        	}
+//        }
         break;
+    }
+    case SWCmdOpsSSTVMode: {
+    	if (g_iors_control_state != STATE_SSTV_MODE) {
+        	debug_print("Command: Enable SSTV\n");
+        	if (radio_set_sstv_mode() == EXIT_SUCCESS)
+        		g_iors_control_state = STATE_SSTV_MODE;
+    	} else {
+        	debug_print("Command: Already in SSTV mode\n");
+    	}
+    	break;
     }
 
      default:
 //        localErrorCollection.DCTCmdFailCommandCnt++;
-        debug_print("Unknown Ops Command %d\n\r",comarg->command);
+        debug_print("Command: Unknown Ops Command %d\n\r",comarg->command);
         return FALSE;
     }
     return TRUE;
@@ -260,7 +273,7 @@ int TlmSWCommands(CommandAndArgs *comarg) {
 //
     default:
      //   localErrorCollection.DCTCmdFailCommandCnt++;
-        debug_print("Unknown Tlm Command\n\r");
+        debug_print("Command: Unknown Tlm Command\n\r");
         return FALSE;
     }
     return TRUE;

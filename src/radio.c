@@ -150,30 +150,73 @@ int radio_reset_speed(int fd) {
     return EXIT_SUCCESS;
 }
 
-
-int setRTS(int fd, int level) {
-    int status;
-
-    if (ioctl(fd, TIOCMGET, &status) == -1) {
-    	error_print("setRTS(): TIOCMGET");
-        return 0;
-    }
-    if (level)
-        status |= TIOCM_RTS;
-    else
-        status &= ~TIOCM_RTS;
-    if (ioctl(fd, TIOCMSET, &status) == -1) {
-    	error_print("setRTS(): TIOCMSET");
-        return 0;
-    }
-    return 1;
+void close_rts_serial(int fd) {
+    if (close(fd) < 0)
+        perror("closeserial()");
 }
 
-int radio_set_cross_band_mode() {
-    if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_ON) != EXIT_SUCCESS) {
-    	debug_print("ERROR: Can not program the radio\n");
-    	return EXIT_FAILURE;
+int open_rts_serial(char *devicename) {
+    int fd;
+   // struct termios attr;
+
+    if ((fd = open(devicename, O_RDWR)) == -1) {
+        perror("openserial(): open()");
+        return 0;
     }
+
+    return fd;
+}
+
+void rts_on(int fd) {
+	int attr;
+	ioctl (fd, TIOCMGET, &attr);
+	attr |= TIOCM_RTS;
+	ioctl (fd, TIOCMSET, &attr);
+}
+
+void rts_off(int fd) {
+	int attr;
+	ioctl (fd, TIOCMGET, &attr);
+	attr &= ~TIOCM_RTS;
+	ioctl (fd, TIOCMSET, &attr);
+}
+
+void set_rts(int fd, int state) {
+	if (state)
+		rts_on(fd);
+	else
+		rts_off(fd);
+}
+
+
+
+//int setRTS(int fd, int level) {
+//    int status;
+//
+//    if (ioctl(fd, TIOCMGET, &status) == -1) {
+//    	error_print("setRTS(): TIOCMGET");
+//        return 0;
+//    }
+//    if (level)
+//        status |= TIOCM_RTS;
+//    else
+//        status &= ~TIOCM_RTS;
+//    if (ioctl(fd, TIOCMSET, &status) == -1) {
+//    	error_print("setRTS(): TIOCMSET");
+//        return 0;
+//    }
+//    return 1;
+//}
+
+int radio_set_cross_band_mode() {
+	if (g_radio_pm == RADIO_PM0 && g_radio_cross_band_repeater == RADIO_XBAND_RPT_ON) {
+		debug_print("Already in cross band repeater mode\n");
+	} else {
+		if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_ON) != EXIT_SUCCESS) {
+			debug_print("ERROR: Can not program the radio\n");
+			return EXIT_FAILURE;
+		}
+	}
 
     if (radio_set_channel(g_serial_dev, RADIO_RPT01_TX_CHANNEL, RADIO_RPT01_RX_CHANNEL) != EXIT_SUCCESS) {
     	debug_print("ERROR: Can't change channels\n");
@@ -196,11 +239,16 @@ int radio_set_aprs_mode() {
 }
 
 int radio_set_sstv_mode() {
-    if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF) != EXIT_SUCCESS) {
-    	debug_print("ERROR: Can not program the radio\n");
-    	return EXIT_FAILURE;
-    }
+	if (g_radio_pm == RADIO_PM0 && g_radio_cross_band_repeater == RADIO_XBAND_RPT_OFF) {
+		debug_print("Already in PM0 with xross band repeater off\n");
+	} else {
+		if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF) != EXIT_SUCCESS) {
+			debug_print("ERROR: Can not program the radio\n");
+			return EXIT_FAILURE;
+		}
+	}
 
+	// Use MU command to set ext data band and speed, if Program Mode was not needed.  Otherwise set when that is called?
     if (radio_set_channel(g_serial_dev, RADIO_SSTV_TX_CHANNEL, RADIO_RPT01_RX_CHANNEL) != EXIT_SUCCESS) {
     	debug_print("ERROR: Can't change channels\n");
     	return EXIT_FAILURE;
@@ -229,7 +277,7 @@ int radio_check_connection(char *serialdev) {
 		debug_print("Can not connect to radio: %s.  Got id %s\n", g_radio_id, response);
 		return EXIT_FAILURE;
 	}
-//	debug_print("CONNECTED TO RADIO: %s\n",response);
+	debug_print("Connected: %s",response);
 
 	/* Check the radio type */
 	n = radio_send_command(serialdev, RADIO_CMD_GET_TYPE, strlen(RADIO_CMD_GET_TYPE), response, rlen);
@@ -338,8 +386,6 @@ int radio_set_channel(char *serialdev, int band_a_channel, int band_b_channel) {
  * Confirms that the correct radio is connected and that the serial port is
  * setup as expected before programming the radio.
  *
- * TODO - If a command fails we still want to try to leave program mode.
- *
  * Returns EXIT_SUCCESS or EXIT_FAILURE
  *
  */
@@ -416,6 +462,9 @@ int radio_program_pm_and_data_band(char *serialdev, int pm, int cross_band_repea
 
     /* Check that we received the 0x06 ack */
     if (radio_program_read_cmp(fd, buf, 1, zero_six) != EXIT_SUCCESS) return EXIT_FAILURE;
+
+    g_radio_pm = pm;
+    g_radio_cross_band_repeater = cross_band_repeater;
 
     if (ext_data_band != -1) {
     	/* Now check the external data band settings.  There are 6 memory regions starting at 0x200

@@ -61,6 +61,8 @@ void load_config() {
 					strlcpy(g_callsign, value,sizeof(g_callsign));
 				} else if (strcmp(key, CONFIG_SERIAL_DEV) == 0) {
 					strlcpy(g_serial_dev, value,sizeof(g_serial_dev));
+				} else if (strcmp(key, CONFIG_PTT_SERIAL_DEV) == 0) {
+					strlcpy(g_ptt_serial_dev, value,sizeof(g_ptt_serial_dev));
 				} else if (strcmp(key, CONFIG_RADIO_ID) == 0) {
 					strlcpy(g_radio_id, value,sizeof(g_radio_id));
 				} else if (strcmp(key, CONFIG_RADIO_TYPE) == 0) {
@@ -69,6 +71,22 @@ void load_config() {
 					strlcpy(g_radio_main_firmware, value,sizeof(g_radio_main_firmware));
 				} else if (strcmp(key, CONFIG_RADIO_PANEL_FIRMWARE) == 0) {
 					strlcpy(g_radio_panel_firmware, value,sizeof(g_radio_panel_firmware));
+
+				} else if (strcmp(key, CONFIG_DIREWOLF_PATH) == 0) {
+					strlcpy(g_direwolf_path, value,sizeof(g_direwolf_path));
+				} else if (strcmp(key, CONFIG_DIREWOLF_LOGFILE_PATH) == 0) {
+					strlcpy(g_direwolf_logfile_path, value,sizeof(g_direwolf_logfile_path));
+				} else if (strcmp(key, CONFIG_DIREWOLF_CONFIG_PATH) == 0) {
+					strlcpy(g_direwolf_config_path, value,sizeof(g_direwolf_config_path));
+
+				} else if (strcmp(key, CONFIG_SSTV_PATH) == 0) {
+					strlcpy(g_sstv_path, value,sizeof(g_sstv_path));
+				} else if (strcmp(key, CONFIG_SSTV_LOGFILE_PATH) == 0) {
+					strlcpy(g_sstv_logfile_path, value,sizeof(g_sstv_logfile_path));
+
+				} else if (strcmp(key, CONFIG_IORS_LAST_COMMAND_TIME_PATH) == 0) {
+					strlcpy(g_iors_last_command_time_path, value,sizeof(g_iors_last_command_time_path));
+
 				} else if (strcmp(key, CONFIG_MAX_FRAMES_IN_TX_BUFFER) == 0) {
 					int n = atoi(value);
 					g_max_frames_in_tx_buffer = n;

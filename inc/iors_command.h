@@ -55,8 +55,10 @@ typedef enum {
 typedef enum {
 	 SWCmdOpsReserved=0
 	,SWCmdOpsSafeMode
-	,SWCmdOpsXBandRepeaterMode = 8 // enable pb
-	,SWCmdOpsSSTVMode = 12 // enable uplink
+	,SWCmdOpsXBandRepeaterMode = 2
+	,SWCmdOpsSSTVMode = 3
+	,SWCmdOpsAPRSMode = 4
+	,SWCmdOpsPacsatMode = 5
     ,SWCmdOpsNumberOfCommands
 }SWOpsCommands;
 

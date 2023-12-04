@@ -24,30 +24,19 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <string.h>
 #include <signal.h>
-#include <sys/wait.h>
-#include <fcntl.h>
+
 
 /* Project include files */
-#include "radio.h"
 #include "config.h"
-#include "agw_tnc.h"
-#include "str_util.h"
-#include "ax25_tools.h"
 #include "iors_command.h"
+#include "iors_controller.h"
 
 /* Forward declarations */
 void help(void);
 void signal_exit (int sig);
 void signal_load_config (int sig);
-int monitor_tnc_frames();
-int handle_command(char *from_callsign, unsigned char *data, int len);
-int send_ok(char *from_callsign);
-int send_err(char *from_callsign, int err);
-int start_program(char * command, char *argv[], char * logfile);
-int monitor_program(pid_t pid);
 
 /*
  *  GLOBAL VARIABLES defined here.  They are declared in config.h
@@ -57,30 +46,33 @@ int monitor_program(pid_t pid);
  */
 int g_verbose = false;
 int g_frames_queued = 0;
-int g_iors_control_state = STATE_INIT;
-char pid_file_path[MAX_FILE_PATH_LEN] = "iors_control.pid";
+int g_radio_pm = -1;
+int g_radio_cross_band_repeater = -1;
 
 /* These global variables are in the iors_control.config file.  This defines their default value
- * but it is almost certainly overwritten in the config files.  It should be
- * changed there. */
+ * but it is overwritten if it is contained in the config file.  */
 int g_bit_rate = 1200;
 char g_callsign[MAX_CALLSIGN_LEN] = "NA1ISS-12";
 char g_radio_id[15] = "ID TM-D710G";
 char g_radio_type[15] = "TY K,0,0,1,0";
 char g_radio_main_firmware[25] = "FV 0,1.00,1.00,A,1";
 char g_radio_panel_firmware[25] = "FV 1,1.00,1.01,A,1";
-char g_serial_dev[MAX_FILE_PATH_LEN] = "/dev/ttyUSB0";
+char g_serial_dev[MAX_FILE_PATH_LEN] = "";
+char g_ptt_serial_dev[MAX_FILE_PATH_LEN] = "";
 int g_max_frames_in_tx_buffer = 2;
+
 char g_direwolf_path[MAX_FILE_PATH_LEN] = "/usr/local/bin/direwolf";
-char g_direwolf_logfile[MAX_FILE_PATH_LEN] = "/tmp/direwolf.log";
+char g_direwolf_logfile_path[MAX_FILE_PATH_LEN] = "/tmp/direwolf.log";
 char g_direwolf_config_path[MAX_FILE_PATH_LEN] = "~/direwolf.conf";
+
+char g_sstv_path[MAX_FILE_PATH_LEN] = "sstv.sh";
+char g_sstv_logfile_path[MAX_FILE_PATH_LEN] = "/tmp/pysstv.log";
+
 char g_iors_last_command_time_path[MAX_FILE_PATH_LEN] = "iors_last_command_time.dat";
 
 
 /* Local variables */
-pthread_t tnc_listen_pthread;
-int frame_num = 0;
-pid_t direwolf_pid;
+char pid_file_path[MAX_FILE_PATH_LEN] = "iors_control.pid";
 
 /**
  * Print this help if the -h or --help command line options are used
@@ -186,7 +178,6 @@ int main(int argc, char *argv[])  {
 		help();
 		return 0;
 	}
-    int rc = EXIT_SUCCESS;
 
 	printf("ARISS IORS Control Program\n");
 	printf("Build: %s\n", VERSION);
@@ -197,82 +188,7 @@ int main(int argc, char *argv[])  {
     /* Load the last command time */
     load_last_commmand_time();
 
-	/* Enter the IORS CONTROL State machine */
-	while(1) {
-		switch (g_iors_control_state) {
-		case STATE_INIT: // Initialization state
-			debug_print("Init .. Trying to connect to radio\n");
-		    /* Make sure we can talk to the radio */
-		    if (radio_check_connection(g_serial_dev) == EXIT_SUCCESS) {
-		    	g_iors_control_state = STATE_RADIO_CONNECTED;
-		    } else {
-		    	//TODO - what other trouble shooting can happen here?  The radio may be off
-		    	sleep(60); /* Wait for a minute and try again */
-		    }
-			break;
-		case STATE_RADIO_CONNECTED:
-			/* Start Direwolf if it is not already running */
-			/* Connect to direwolf*/
-			rc = tnc_connect("127.0.0.1", AGW_PORT, g_bit_rate, g_max_frames_in_tx_buffer);
-			if (rc == EXIT_SUCCESS) {
-				rc = tnc_start_monitoring('k'); // k monitors raw frames, required to process UI frames
-				if (rc != EXIT_SUCCESS) {
-					error_print("\n Error : Could not monitor TNC k frames \n");
-				}
-				rc = tnc_start_monitoring('m'); // monitors connected frames, also required to monitor T frames to manage the TX frame queue
-				if (rc != EXIT_SUCCESS) {
-					error_print("\n Error : Could not monitor TNC m frames\n");
-				}
-
-				/**
-				 * Start a thread to listen to the TNC.  This will write all received frames into
-				 * a circular buffer.  This thread runs in the background and is always ready to
-				 * receive data from the TNC.
-				 *
-				 * The receive loop reads frames from the buffer and processes
-				 * them when we have time.
-				 */
-				char *name = "TNC Listen Thread";
-				rc = pthread_create( &tnc_listen_pthread, NULL, tnc_listen_process, (void*) name);
-				if (rc != EXIT_SUCCESS) {
-					error_print("FATAL. Could not start the TNC listen thread.\n");
-					exit(rc);
-				}
-
-				g_iors_control_state = STATE_TNC_CONNECTED;
-			} else {
-		        char *argv[]={"direwolf","-q d","-r 48000",(char *)NULL};
-				direwolf_pid = start_program(g_direwolf_path,argv, g_direwolf_logfile);
-				if (direwolf_pid == -1) {
-					error_print("Can not start direwolf\n");
-					sleep(60);
-				} else {
-					sleep(3); // give tnc time to start
-				}
-			}
-			break;
-
-		case STATE_TNC_CONNECTED:
-			monitor_tnc_frames();
-			//monitor_program(direwolf_pid);
-			break;
-
-		case STATE_PACKET_MODE:
-			monitor_tnc_frames();
-			break;
-
-		case STATE_SSTV_MODE:
-			monitor_tnc_frames();
-			break;
-
-		case STATE_X_BAND_REPEATER_MODE:
-			monitor_tnc_frames();
-			break;
-
-		default :
-			break;
-		}
-	}
+    iors_control_loop();
 
 #ifdef JUNK
     //	char * data = "MS BILL\r";
@@ -313,167 +229,4 @@ int main(int argc, char *argv[])  {
 #endif
     cleanup();
     return EXIT_SUCCESS;
-}
-
-int monitor_tnc_frames() {
-	struct t_agw_frame_ptr frame;
-	int rc = get_next_frame(frame_num, &frame);
-	if (rc == EXIT_SUCCESS) {
-		frame_num++;
-		if (frame_num == MAX_RX_QUEUE_LEN)
-			frame_num=0;
-
-		switch (frame.header->data_kind) {
-		case 'K': // Monitored frame
-//			debug_print("FRM:%d:",frame_num);
-//			print_header(frame.header);
-//			print_data(frame.data, frame.header->data_len);
-//			debug_print("| %d bytes\n", frame.header->data_len);
-
-			if (strncasecmp(frame.header->call_to, g_callsign, MAX_CALLSIGN_LEN) == 0) {
-					// this was sent to our Callsign
-
-					struct t_ax25_header *ax25_header;
-					ax25_header = (struct t_ax25_header *)frame.data;
-//					debug_print("IORS Packet: pid: %02x \n", ax25_header->pid & 0xff);
-					if ((ax25_header->pid & 0xff) == PID_COMMAND) {
-						handle_command(frame.header->call_from, frame.data, frame.header->data_len);
-
-					}
-				}
-
-			break;
-
-
-		}
-	} else {
-		usleep(1000); // sleep 1ms
-	}
-	return EXIT_SUCCESS;
-}
-
-int handle_command(char *from_callsign, unsigned char *data, int len) {
-	//debug_print("IORS COMMAND: len: %d \n", len);
-    SWCmdUplink *sw_command;
-    sw_command = (SWCmdUplink *)(data + sizeof(AX25_HEADER));
-
-    debug_print("Received Command %04x addr: %d names: %d cmd %d from %s length %d\n",(sw_command->dateTime),
-                sw_command->address, sw_command->namespaceNumber, (sw_command->comArg.command), from_callsign, len);
-
-    /* Pass the data to the command processor */
-    if(AuthenticateSoftwareCommand(sw_command)){
-    	//debug_print("Command Authenticated!\n");
-    	int rc = send_ok(from_callsign);
-    	if (rc != EXIT_SUCCESS) {
-    		debug_print("\n Error : Could not send OK Response to TNC \n");
-    	}
-    	// usleep(1000*1000);
-    	if(DispatchSoftwareCommand(sw_command,true))
-    		return EXIT_SUCCESS;
-    	else
-    		return EXIT_FAILURE;
-    } else {
-    	int r = send_err(from_callsign, 5);
-    	if (r != EXIT_SUCCESS) {
-    		debug_print("\n Error : Could not send ERR Response to TNC \n");
-    	}
-    }
-    return EXIT_SUCCESS;
-}
-
-/**
- * send_ok()
- *
- * Send a UI frame from the broadcast callsign to the station with PID BB and the
- * text OK <callsign>0x0Drequest_list
- */
-int send_ok(char *from_callsign) {
-	int rc = EXIT_SUCCESS;
-	char buffer[4 + strlen(from_callsign)]; // OK + 10 char for callsign with SSID
-	strlcpy(buffer,"OK ", sizeof(buffer));
-	strlcat(buffer, from_callsign, sizeof(buffer));
-	rc = send_raw_packet(g_callsign, from_callsign, PID_FILE, (unsigned char *)buffer, sizeof(buffer));
-
-	return rc;
-}
-
-/**
- * send_err()
- *
- * Send a UI frame to the station containing an error response.  The error values are defined in
- * the header file
- *
- * returns EXIT_SUCCESS unless it is unable to send the data to the TNC
- *
- */
-int send_err(char *from_callsign, int err) {
-	int rc = EXIT_SUCCESS;
-	char err_str[2];
-	snprintf(err_str, 3, "%d",err);
-	char buffer[6 + strlen(err_str)+ strlen(from_callsign)]; // NO -XX + 10 char for callsign with SSID
-	char CR = 0x0d;
-	strlcpy(buffer,"NO -", sizeof(buffer));
-	strlcat(buffer, err_str, sizeof(buffer));
-	strlcat(buffer," ", sizeof(buffer));
-	strlcat(buffer, from_callsign, sizeof(buffer));
-	strncat(buffer,&CR,1); // very specifically add just one char to the end of the string for the CR
-	rc = send_raw_packet(g_callsign, from_callsign, PID_FILE, (unsigned char *)buffer, sizeof(buffer));
-
-	return rc;
-}
-
-int monitor_program(pid_t pid) {
-	int status;
-	pid_t w;
-
-	w = waitpid(pid, &status, WUNTRACED | WCONTINUED);
-	if (w == -1) {
-		perror("waitpid");
-		return(EXIT_FAILURE);
-	}
-
-	if (WIFEXITED(status)) {
-		printf("exited, status=%d\n", WEXITSTATUS(status));
-		return(EXIT_FAILURE);
-	} else if (WIFSIGNALED(status)) {
-		printf("killed by signal %d\n", WTERMSIG(status));
-		return(EXIT_FAILURE);
-	} else if (WIFSTOPPED(status)) {
-		printf("stopped by signal %d\n", WSTOPSIG(status));
-		return(EXIT_FAILURE);
-	} else if (WIFCONTINUED(status)) {
-		printf("continued\n");
-	}
-
-	return EXIT_SUCCESS;
-}
-
-/**
- * start_program()
- * Start the program given in the command
- *
- * Returns the PID of the started program or 0 of there was an error
- */
-int start_program(char * command, char *argv[], char * logfile) {
-	/*Spawn a child to run the program.*/
-	    pid_t pid = fork();
-	    if (pid == -1) {
-	    	// fork failed
-	    	return -1;
-	    }
-	    if (pid==0) { /* child process */
-	    	printf("Starting %s PID is %ld\n", argv[0], (long) getpid());
-	    	int fd = open(logfile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-
-	    	dup2(fd, 1);   // make stdout go to file
-	    	dup2(fd, 2);   // make stderr go to file
-	    	close(fd);     // fd no longer needed - the dup'ed handles are sufficient
-
-	        //static char *argv[]={"echo","Foo is my name.",NULL};
-	        execv(command,argv);
-	        exit(127); /* only if execv fails */
-	    } else { /* pid!=0; parent process */
-
-	    }
-	    return pid;
 }

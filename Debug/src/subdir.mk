@@ -6,18 +6,21 @@
 C_SRCS += \
 ../src/config.c \
 ../src/iors_command.c \
+../src/iors_controller.c \
 ../src/iors_main.c \
 ../src/radio.c 
 
 C_DEPS += \
 ./src/config.d \
 ./src/iors_command.d \
+./src/iors_controller.d \
 ./src/iors_main.d \
 ./src/radio.d 
 
 OBJS += \
 ./src/config.o \
 ./src/iors_command.o \
+./src/iors_controller.o \
 ./src/iors_main.o \
 ./src/radio.o 
 
@@ -34,7 +37,7 @@ src/%.o: ../src/%.c src/subdir.mk
 clean: clean-src
 
 clean-src:
-	-$(RM) ./src/config.d ./src/config.o ./src/iors_command.d ./src/iors_command.o ./src/iors_main.d ./src/iors_main.o ./src/radio.d ./src/radio.o
+	-$(RM) ./src/config.d ./src/config.o ./src/iors_command.d ./src/iors_command.o ./src/iors_controller.d ./src/iors_controller.o ./src/iors_main.d ./src/iors_main.o ./src/radio.d ./src/radio.o
 
 .PHONY: clean-src
 
