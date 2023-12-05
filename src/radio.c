@@ -37,6 +37,7 @@
 
 /* Forward declarations */
 int radio_reset_speed(int fd);
+int radio_check_connection(char *serialdev);
 int radio_close_program_mode(int fd);
 int radio_program_write(int fd, char * data, int len);
 int radio_program_read(int fd, char * buf, int len);
@@ -188,7 +189,44 @@ void set_rts(int fd, int state) {
 		rts_off(fd);
 }
 
+int get_rts(int fd) {
+	int attr;
+	ioctl (fd, TIOCMGET, &attr);
+	if ((attr & TIOCM_RTS) == 0)
+		return 0;
+	else
+		return 1;
+}
 
+void cts_on(int fd) {
+	int attr;
+	ioctl (fd, TIOCMGET, &attr);
+	attr |= TIOCM_CTS;
+	ioctl (fd, TIOCMSET, &attr);
+}
+
+void cts_off(int fd) {
+	int attr;
+	ioctl (fd, TIOCMGET, &attr);
+	attr &= ~TIOCM_CTS;
+	ioctl (fd, TIOCMSET, &attr);
+}
+
+void set_cts(int fd, int state) {
+	if (state)
+		cts_on(fd);
+	else
+		cts_off(fd);
+}
+
+int get_cts(int fd) {
+	int attr;
+	ioctl (fd, TIOCMGET, &attr);
+	if ((attr & TIOCM_CTS) == 0)
+		return 0;
+	else
+		return 1;
+}
 
 //int setRTS(int fd, int level) {
 //    int status;
@@ -256,6 +294,23 @@ int radio_set_sstv_mode() {
     return EXIT_SUCCESS;
 }
 
+int radio_check_connection(char *serialdev) {
+	int rlen = 25;
+	char response[rlen];
+
+	/* Check the radio ID */
+	int n = radio_send_command(serialdev, RADIO_CMD_GET_ID, strlen(RADIO_CMD_GET_ID), response, rlen);
+	if (n < 0) {
+		debug_print("Can not send command to radio\n");
+		return EXIT_FAILURE;
+	}
+	if (strncmp(response, g_radio_id, strlen(g_radio_id)) != 0) {
+		debug_print("Can not connect to radio: %s.  Got id %s\n", g_radio_id, response);
+		return EXIT_FAILURE;
+	}
+	debug_print("Connected: %s",response);
+	return EXIT_SUCCESS;
+}
 /**
  * radio_check_connection()
  * Confirm that that we are connected to the ARISS radio.
@@ -263,7 +318,7 @@ int radio_set_sstv_mode() {
  * strings are contained in the config file
  *
  */
-int radio_check_connection(char *serialdev) {
+int radio_check_initial_connection(char *serialdev) {
 	int rlen = 25;
 	char response[rlen];
 
@@ -298,7 +353,7 @@ int radio_check_connection(char *serialdev) {
 		return EXIT_FAILURE;
 	}
 	if (strncmp(response, g_radio_main_firmware, strlen(g_radio_main_firmware)) != 0) {
-		debug_print("Wrong radio main firmware: %s Got type %s\n", g_radio_main_firmware, response);
+		debug_print("Wrong radio main firmware: %s Got firmware %s\n", g_radio_main_firmware, response);
 		return EXIT_FAILURE;
 	}
 //	debug_print("MAIN FW: %s",response);
@@ -309,7 +364,7 @@ int radio_check_connection(char *serialdev) {
 		return EXIT_FAILURE;
 	}
 	if (strncmp(response, g_radio_panel_firmware, strlen(g_radio_panel_firmware)) != 0) {
-		debug_print("Wrong radio panel firmware: %s Got type %s\n", g_radio_panel_firmware, response);
+		debug_print("Wrong radio panel firmware: %s Got firmware %s\n", g_radio_panel_firmware, response);
 		return EXIT_FAILURE;
 	}
 //	debug_print("PANEL FW: %s",response);
@@ -607,7 +662,7 @@ int radio_send_command(char *serialdev, char * data, int len, char *response, in
 //		else {
 //			debug_print("Wrote %d bytes\n",p);
 //		}
-		usleep(50*1000);
+		usleep(200*1000);   //// Hmm, this delay seems to be critical, suggesting radio is slow or we do not have flow control setup correctly
 //		debug_print("Response:");
 		int n = read(fd, response, rlen);
 		if (response[0] == '?') {
@@ -615,7 +670,18 @@ int radio_send_command(char *serialdev, char * data, int len, char *response, in
 			radio_closeserial(fd);
 			return -1;
 		}
-		response[n] = 0; // terminate the string
+		if (n < 0) {
+			printf ("error %d reading data\n", errno);
+			radio_closeserial(fd);
+			return 1;
+		}
+//		int b = 0;
+//		if (n < rlen) {
+//			// try to read some more
+//			b = read(fd, response+n, rlen-n);
+//		}
+//		response[n+b] = 0; // terminate the string
+		usleep(50*1000);
 /*
 		int i;
 		for (i=0; i< n; i++) {
@@ -624,12 +690,9 @@ int radio_send_command(char *serialdev, char * data, int len, char *response, in
 		}
 		debug_print("\n");
 */
-		if (n < 0) {
-			printf ("error %d reading data\n", errno);
-			radio_closeserial(fd);
-			return 1;
-		}
+
 		//		set_rts(g_serial_fd, 0);
 		radio_closeserial(fd);
+		usleep(50*1000);
 		return n;
 }

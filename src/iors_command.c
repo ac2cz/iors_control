@@ -134,6 +134,7 @@ int CommandTimeOK(SWCmdUplink *uplink) {
 	}
     if ((uplink->dateTime + COMMAND_TIME_TOLLERANCE) <= last_command_time) {
     	debug_print("Command: Bad time on command!\n");
+    	debug_print("Command: %d Last Command %d\n",uplink->dateTime, last_command_time);
     	return false;
     } else {
     	last_command_time = uplink->dateTime;

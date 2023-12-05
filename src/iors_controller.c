@@ -93,11 +93,11 @@ void iors_control_loop() {
 		case STATE_INIT: // Initialization state
 			debug_print("Init .. Trying to connect to radio\n");
 			/* Make sure we can talk to the radio */
-			if (radio_check_connection(g_serial_dev) == EXIT_SUCCESS) {
+			if (radio_check_initial_connection(g_serial_dev) == EXIT_SUCCESS) {
 				g_iors_control_state = STATE_RADIO_CONNECTED;
 			} else {
 				//TODO - what other trouble shooting can happen here?  The radio may be off
-				sleep(60); /* Wait for a minute and try again */
+				sleep(10); /* Wait and try again */
 			}
 			break;
 		case STATE_RADIO_CONNECTED:
@@ -170,7 +170,7 @@ int state_sstv_mode() {
 
 	switch (sstv_state) {
 			case STATE_SSTV_INIT: // Initialization state
-				sleep(3);
+				sleep(2);
 				debug_print("Init .. Starting SSTV\n");
 				//int prog_state = monitor_program(direwolf_pid);
 				if (direwolf_pid != PID_NOT_RUNNING) {
