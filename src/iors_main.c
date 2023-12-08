@@ -30,6 +30,7 @@
 
 /* Project include files */
 #include "config.h"
+#include "str_util.h"
 #include "iors_command.h"
 #include "iors_controller.h"
 
@@ -73,6 +74,7 @@ char g_iors_last_command_time_path[MAX_FILE_PATH_LEN] = "iors_last_command_time.
 
 /* Local variables */
 char pid_file_path[MAX_FILE_PATH_LEN] = "iors_control.pid";
+char config_file_name[MAX_FILE_PATH_LEN] = "iors_control.config";
 
 /**
  * Print this help if the -h or --help command line options are used
@@ -81,7 +83,7 @@ void help(void) {
 	printf(
 			"Usage: pacsat [OPTION]... \n"
 			"-h,--help                        help\n"
-			"-t,--test                        Run self test functions and exit\n"
+			"-c,--config                      use config file specified\n"
 			"-v,--verbose                     print additional status and progress messages\n"
 
 	);
@@ -150,24 +152,25 @@ int main(int argc, char *argv[])  {
 	signal (SIGINT, signal_exit);
 
 	struct option long_option[] = {
-			{"help", 0, NULL, 'h'},
-			{"test", 0, NULL, 't'},
-			{"verbose", 0, NULL, 'v'},
+			{"help", no_argument, NULL, 'h'},
+			{"config", required_argument, NULL, 'c'},
+			{"verbose", no_argument, NULL, 'v'},
 			{NULL, 0, NULL, 0},
 	};
 
 	int more_help = false;
 	while (1) {
 		int c;
-		if ((c = getopt_long(argc, argv, "htv:", long_option, NULL)) < 0)
+		if ((c = getopt_long(argc, argv, "hc:v", long_option, NULL)) < 0)
 			break;
 		switch (c) {
 		case 'h': // help
 			more_help = true;
 			break;
-//		case 't': // self test
-//			g_run_self_test = true;
-//			break;
+		case 'c': // config file name
+//			config_file_name = optarg;
+			strlcpy(config_file_name, optarg, sizeof(config_file_name));
+			break;
 		case 'v': // verbose
 			g_verbose = true;
 			break;
@@ -183,7 +186,7 @@ int main(int argc, char *argv[])  {
 	printf("Build: %s\n", VERSION);
 
 	/* Load the config from disk */
-    load_config();
+    load_config(config_file_name);
 
     /* Load the last command time */
     load_last_commmand_time();

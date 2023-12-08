@@ -30,9 +30,7 @@
 #include "config.h"
 #include "str_util.h"
 
-char filename[] = "iors_control.config";
-
-void load_config() {
+void load_config(char *filename) {
 	char *key;
 	char *value;
 	char *search = "=";
