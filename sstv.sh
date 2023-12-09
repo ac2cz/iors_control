@@ -1,5 +1,7 @@
 #!/bin/bash
 
-# TODO - need to pass in the soundcard name
-aplay -c2 -Dhw:2,0 -r48000 $1
+# This assumes we are using the default soundcard
+# The audio file is stereo, even though only one channel is needed
+echo STARTING SSTV
+aplay -c2 -Dhw:0,0 -r48000 $1
 
