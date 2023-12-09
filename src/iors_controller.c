@@ -198,7 +198,7 @@ int state_sstv_mode() {
 
 //				char *argv[]={"pysstv","--chan 2","--rate 48000","--resize","--mode PD120",
 //						"/home/g0kla/sstv_images/ariss-tim-peak.jpg","/home/g0kla/sstv_images/ariss-tim-peak.wav",(char *)NULL};
-				char *argv[]={"aplay","/home/g0kla/sstv_images/ariss.wav",(char *)NULL};
+				char *argv[]={"aplay","ariss.wav",(char *)NULL};
 //				char *argv[]={"aplay","-c2", "-r48000", "-D hw:1,0", "/home/g0kla/sstv_images/ariss-tim-peak.wav",(char *)NULL};
 				sstv_pid = start_program(g_sstv_path,argv, g_sstv_logfile_path);
 

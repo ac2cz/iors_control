@@ -680,7 +680,7 @@ int radio_send_command(char *serialdev, char * data, int len, char *response, in
 //			// try to read some more
 //			b = read(fd, response+n, rlen-n);
 //		}
-//		response[n+b] = 0; // terminate the string
+		response[n] = 0; // terminate the string
 		usleep(50*1000);
 /*
 		int i;

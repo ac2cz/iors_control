@@ -1,7 +1,7 @@
 #!/bin/bash
 
 INSTALL_DIR=/mnt/usb-disk/ariss
-SRC_DIR=/home/pi/workspace/iors_control
+SRC_DIR=.
 
 echo Installing the iors control program
 
