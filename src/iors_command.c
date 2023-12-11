@@ -205,10 +205,10 @@ int OpsSWCommands(CommandAndArgs *comarg) {
        // bool turnOn;
        // turnOn = (comarg->arguments[0] != 0);
        // if(turnOn){
-        	if (g_iors_control_state != STATE_X_BAND_REPEATER_MODE) {
+        	if (g_iors_control_state != STATE_CROSS_BAND_REPEATER) {
         		debug_print("Command: Cross band Repeater mode\n");
         		if (radio_set_cross_band_mode() == EXIT_SUCCESS)
-        			g_iors_control_state = STATE_X_BAND_REPEATER_MODE;
+        			g_iors_control_state = STATE_CROSS_BAND_REPEATER;
         	} else {
         		debug_print("Command: Already in Cross band Repeater mode\n");
         	}
@@ -222,10 +222,10 @@ int OpsSWCommands(CommandAndArgs *comarg) {
         break;
     }
     case SWCmdOpsSSTVMode: {
-    	if (g_iors_control_state != STATE_SSTV_MODE) {
+    	if (g_iors_control_state != STATE_SSTV) {
         	debug_print("Command: Enable SSTV\n");
         	if (radio_set_sstv_mode() == EXIT_SUCCESS)
-        		g_iors_control_state = STATE_SSTV_MODE;
+        		g_iors_control_state = STATE_SSTV;
     	} else {
         	debug_print("Command: Already in SSTV mode\n");
     	}

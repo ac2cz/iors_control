@@ -41,239 +41,404 @@
 #include "iors_command.h"
 
 #define PROCESS_KILLED -9
-#define PROCESS_RUNNING -1
+#define PROCESS_RUNNING 2
 
 #define PID_NOT_RUNNING -99
 
-#define TIMER_T1_LIMIT 3
-#define TIMER_T3_LIMIT 60
-
 /* Forward declarations */
-int state_sstv_mode();
-int monitor_tnc_frames();
-int handle_command(char *from_callsign, unsigned char *data, int len);
+void iors_process_event(struct t_iors_event *iors_event);
+int sstv_send();
+int sstv_stop();
+int next_sstv_file(char * filename);
+int valid_command(char *from_callsign, unsigned char *data, int len, struct t_iors_event *command_event);
 int send_ok(char *from_callsign);
 int send_err(char *from_callsign, int err);
 int start_program(char * command, char *argv[], char * logfile);
-int monitor_program(pid_t pid);
+int program_stopped(char * program_name, pid_t pid);
+int start_tnc();
+int stop_program(char * program_name, pid_t pid);
+int connect_tnc();
 
 /* Local variables */
 int g_iors_control_state = STATE_INIT;
 int sstv_state = STATE_SSTV_INIT;
-pthread_t tnc_listen_pthread;
+pthread_t tnc_listen_pthread = 0;
+struct t_iors_event command_event;
+int tnc_connected = false;
+int radio_connected = false;
+int cross_band_repeater = false;
+int sstv_loop = 0;
+int sstv_loop_repeat = 0;
 int frame_num = 0;
-pid_t direwolf_pid = PID_NOT_RUNNING, sstv_pid = PID_NOT_RUNNING;
-int ptt_serial;
+pid_t tnc_pid = PID_NOT_RUNNING, sstv_pid = PID_NOT_RUNNING;
+int ptt_serial = 0; /* Remember the serial file descriptor for the PTT as SSTV keeps it open across states */
+int timer_t1_limit = TIMER_T1_DEFAULT_LIMIT;
+int timer_t3_limit = TIMER_T3_DEFAULT_LIMIT;
+int timer_t4_limit = TIMER_T4_DEFAULT_LIMIT;
 int TIMER_T1 = 0;
 int TIMER_T3 = 0;
+int TIMER_T4 = 0;
 
+time_t last_time_checked_radio = 0;
+time_t last_time_checked_tnc = 0;
+time_t last_time_checked_programs = 0;
+
+char * TEST_SSTV_FILE = "ariss.wav";
 
 /*****
- * TODO:
- * Update this to be event driven.
- * It should receive Commands as the events
- * The while loop should be a level above that monitors for packets and sends any received
- * commands here
- * At boot the first "command" is an internal command: Connect_radio
- * If successful it can send itself a command "Connect TNC" etc.
- * But, how do retries work?  That suggests events from timers that are fired in the background
- * So if we are in state INIT and execute Connect_radio but fail, then we start timer and when
- * done it sends a connect_radio event again.  If #retries exceeded then something happens like
- * reboot radio/cpu.
+ * iors_control_loop()
+ * Loop that monitors for events and sends them to the iors_control_state_machine
  *
- * We can then draw out the whole state machine/model and study it.
+ * At boot we need to connect the radio and set the time.
+ * We then check the mode we are in.
+ *
  *
  */
 
 void iors_control_loop() {
-	int rc = 0;
-	/* Enter the IORS CONTROL State machine */
+	struct t_iors_event iors_event;
+	struct t_agw_frame_ptr frame;
+
+
 	while(1) {
-		switch (g_iors_control_state) {
-		case STATE_INIT: // Initialization state
-			debug_print("Init .. Trying to connect to radio\n");
-			/* Make sure we can talk to the radio */
+		time_t now = time(0);
+		int rc = EXIT_FAILURE;
+		if (last_time_checked_radio == 0) {
+			/* Startup - is the right radio connected */
 			if (radio_check_initial_connection(g_serial_dev) == EXIT_SUCCESS) {
-				g_iors_control_state = STATE_RADIO_CONNECTED;
+				// TODO - If we can then set the time here from the radio
+				iors_event.event = EVENT_RADIO_CONNECTED;
+				radio_connected = true;
+				last_time_checked_radio = now;
+				iors_process_event(&iors_event);
 			} else {
-				//TODO - what other trouble shooting can happen here?  The radio may be off
-				sleep(10); /* Wait and try again */
+				/* Nothing to do here but wait for the radio to become available */
+				sleep(10);
 			}
-			break;
-		case STATE_RADIO_CONNECTED:
-			/* Start Direwolf if it is not already running */
-			/* Connect to direwolf*/
-			rc = tnc_connect("127.0.0.1", AGW_PORT, g_bit_rate, g_max_frames_in_tx_buffer);
-			if (rc == EXIT_SUCCESS) {
-				rc = tnc_start_monitoring('k'); // k monitors raw frames, required to process UI frames
-				if (rc != EXIT_SUCCESS) {
-					error_print("\n Error : Could not monitor TNC k frames \n");
+		} else if ((now - last_time_checked_radio) > PERIOD_TO_CHECK_RADIO_CONNECTED) {
+			/* Check if the radio is connected */
+			if (radio_check_connection(g_serial_dev) == EXIT_FAILURE) {
+				if (radio_connected) {
+					radio_connected = false;
+					iors_event.event = EVENT_RADIO_DISCONNECTED;
+					iors_process_event(&iors_event);
 				}
-				rc = tnc_start_monitoring('m'); // monitors connected frames, also required to monitor T frames to manage the TX frame queue
-				if (rc != EXIT_SUCCESS) {
-					error_print("\n Error : Could not monitor TNC m frames\n");
+			} else {
+				if (!radio_connected) {
+					radio_connected = true;
+					iors_event.event = EVENT_RADIO_CONNECTED;
+					iors_process_event(&iors_event);
 				}
+			}
 
-				/**
-				 * Start a thread to listen to the TNC.  This will write all received frames into
-				 * a circular buffer.  This thread runs in the background and is always ready to
-				 * receive data from the TNC.
-				 *
-				 * The receive loop reads frames from the buffer and processes
-				 * them when we have time.
-				 */
-				char *name = "TNC Listen Thread";
-				rc = pthread_create( &tnc_listen_pthread, NULL, tnc_listen_process, (void*) name);
-				if (rc != EXIT_SUCCESS) {
-					error_print("FATAL. Could not start the TNC listen thread.\n");
-					exit(rc);
-				}
+			last_time_checked_radio = now;
+		}
 
+		/* The TNC is connected when we need it.  It is checked every time we try to send a packet
+		 * This is an extra check in case there is no activity  */
+		if (last_time_checked_tnc == 0 || (now - last_time_checked_tnc) > PERIOD_TO_CHECK_TNC_CONNECTED) {
+			last_time_checked_tnc = now;
+		}
+
+
+		if (TIMER_T1 != 0 && (now - TIMER_T1) > timer_t1_limit) {
+			/* Timer T1 was running and expired */
+			iors_event.event = TIMER_T1_EXPIRED;
+			TIMER_T1 = 0; // Stop T1
+			iors_process_event(&iors_event);
+		}
+		if (TIMER_T3 != 0 && (now - TIMER_T3) > timer_t3_limit) {
+			/* Timer T3 was running and expired */
+			iors_event.event = TIMER_T3_EXPIRED;
+			TIMER_T3 = 0; // Stop T3
+			iors_process_event(&iors_event);
+		}
+		if (TIMER_T4 != 0 && (now - TIMER_T4) > timer_t4_limit) {
+			/* Timer T4 was running and expired */
+			iors_event.event = TIMER_T4_EXPIRED;
+			TIMER_T4 = 0; // Stop T4
+			iors_process_event(&iors_event);
+		}
+
+		if (last_time_checked_programs == 0 || (now - last_time_checked_programs) > PERIOD_TO_CHECK_PROGRAMS) {
+			last_time_checked_programs = now;
+
+			/* Check if the programs are running */
+			//if (sstv_pid != PID_NOT_RUNNING) {
+			if (program_stopped("SSTV", sstv_pid)) {
+				iors_event.event = EVENT_SSTV_EXITED;
+				iors_process_event(&iors_event);
+			}
+
+			if (program_stopped("TNC", tnc_pid)) {
+				iors_event.event = EVENT_TNC_EXITED;
+				iors_process_event(&iors_event);
+			}
+
+		}
+		rc = get_next_frame(frame_num, &frame);
+		if (rc == EXIT_SUCCESS) {
+			frame_num++;
+			if (frame_num == MAX_RX_QUEUE_LEN)
+				frame_num=0;
+
+			switch (frame.header->data_kind) {
+			case 'K': // Monitored frame
+				//			debug_print("FRM:%d:",frame_num);
+				//			print_header(frame.header);
+				//			print_data(frame.data, frame.header->data_len);
+				//			debug_print("| %d bytes\n", frame.header->data_len);
+				if (strncasecmp(frame.header->call_to, g_callsign, MAX_CALLSIGN_LEN) == 0) { // this was sent to our Callsign
+					if (valid_command(frame.header->call_from, frame.data, frame.header->data_len, &command_event) == EXIT_SUCCESS) {
+						iors_process_event(&command_event);
+					}
+				}
+				break;
+			}
+		} else {
+			usleep(1000); // sleep 1ms
+		}
+	}
+}
+
+void iors_process_event(struct t_iors_event *iors_event) {
+	switch (g_iors_control_state) {
+	case STATE_INIT: // Initialization state
+		debug_print("STATE: INIT\n");
+		if (iors_event->event == EVENT_RADIO_CONNECTED) {
+			g_iors_control_state = STATE_RADIO_CONNECTED;
+			if (start_tnc() == EXIT_SUCCESS) {
 				g_iors_control_state = STATE_TNC_CONNECTED;
 			} else {
-				char *argv[]={"direwolf","-q d","-r 48000",(char *)NULL};
-				direwolf_pid = start_program(g_direwolf_path,argv, g_direwolf_logfile_path);
-				if (direwolf_pid == -1) {
-					error_print("Can not start direwolf\n");
-					sleep(60);
-				} else {
-					sleep(3); // give tnc time to start
-				}
+				TIMER_T1 = time(0); // Start T1
+			}
+		}
+		break;
+	case STATE_RADIO_CONNECTED: {
+		debug_print("STATE: RADIO CONNECTED\n");
+		switch (iors_event->event) {
+		case EVENT_RADIO_DISCONNECTED:
+			g_iors_control_state = STATE_INIT;
+			break;
+
+		case TIMER_T1_EXPIRED:
+		case EVENT_TNC_DISCONNECTED:
+			if (start_tnc() == EXIT_SUCCESS) {
+				g_iors_control_state = STATE_TNC_CONNECTED;
+			} else {
+				TIMER_T1 = time(0); // Start T1
 			}
 			break;
-
-		case STATE_TNC_CONNECTED:
-			monitor_tnc_frames();
-			//monitor_program(direwolf_pid);
-			break;
-
-		case STATE_PACKET_MODE:
-			monitor_tnc_frames();
-			break;
-
-		case STATE_SSTV_MODE:
-			//monitor_tnc_frames();
-			state_sstv_mode();
-			break;
-
-		case STATE_X_BAND_REPEATER_MODE:
-			monitor_tnc_frames();
-			break;
-
-		default :
+		default:
 			break;
 		}
+
+		break;
 	}
-}
 
-int state_sstv_mode() {
-
-	switch (sstv_state) {
-			case STATE_SSTV_INIT: // Initialization state
-				sleep(2);
-				debug_print("Init .. Starting SSTV\n");
-				//int prog_state = monitor_program(direwolf_pid);
-				if (direwolf_pid != PID_NOT_RUNNING) {
-					int dw_prog_state = kill(direwolf_pid, 0);
-					if (dw_prog_state == 0) {
-						debug_print("Direwolf running. Stopping with SIGINT....\n");
-						kill(direwolf_pid, SIGINT);
-						int wstatus;
-						dw_prog_state = waitpid(direwolf_pid, &wstatus,0);
-						if (dw_prog_state != direwolf_pid) {
-							debug_print("Direwolf: Stopping with SIGKILL....\n");
-							kill(direwolf_pid, SIGKILL);
-						} else {
-							debug_print("Direwolf: Stopped with SIGINT\n");
-						}
-					}
-					direwolf_pid = PID_NOT_RUNNING;
-				}
-				sstv_state = STATE_SSTV_SEND;
-				break;
-			case STATE_SSTV_SEND:
-
-				ptt_serial = open_rts_serial(g_ptt_serial_dev);
-				set_rts(ptt_serial, true);
-
-//				char *argv[]={"pysstv","--chan 2","--rate 48000","--resize","--mode PD120",
-//						"/home/g0kla/sstv_images/ariss-tim-peak.jpg","/home/g0kla/sstv_images/ariss-tim-peak.wav",(char *)NULL};
-				char *argv[]={"aplay","ariss.wav",(char *)NULL};
-//				char *argv[]={"aplay","-c2", "-r48000", "-D hw:1,0", "/home/g0kla/sstv_images/ariss-tim-peak.wav",(char *)NULL};
-				sstv_pid = start_program(g_sstv_path,argv, g_sstv_logfile_path);
-
-				if (sstv_pid == -1) {
-					set_rts(ptt_serial, false);
-					error_print("Can not start sstv\n");
-					sleep(60);
-				} else {
-					debug_print("SSTV playing\n");
-					sstv_state = STATE_SSTV_MONITOR;
-				}
-				break;
-			case STATE_SSTV_MONITOR:
-				int wstatus;
-				int prog_state = waitpid(sstv_pid, &wstatus,0);
-//
-//				if (sstv_pid != PID_NOT_RUNNING)
-//					prog_state = kill(sstv_pid, 0); // check if it is running
-//				if (prog_state != 0) {
-					// no longer running, clean up and change state
-					debug_print ("SSTV finished\n");
-					set_rts(ptt_serial, false);
-					close_rts_serial(ptt_serial);
-					sstv_pid = PID_NOT_RUNNING;
-					sstv_state = STATE_SSTV_INIT;
-					g_iors_control_state = STATE_RADIO_CONNECTED;
-//				} else {
-//					//debug_print(".");
-//					usleep(100*1000);
-//				}
-				//monitor_tnc_frames();
-				break;
-	}
-	return EXIT_SUCCESS;
-}
-
-int monitor_tnc_frames() {
-	struct t_agw_frame_ptr frame;
-	int rc = get_next_frame(frame_num, &frame);
-	if (rc == EXIT_SUCCESS) {
-		frame_num++;
-		if (frame_num == MAX_RX_QUEUE_LEN)
-			frame_num=0;
-
-		switch (frame.header->data_kind) {
-		case 'K': // Monitored frame
-			//			debug_print("FRM:%d:",frame_num);
-			//			print_header(frame.header);
-			//			print_data(frame.data, frame.header->data_len);
-			//			debug_print("| %d bytes\n", frame.header->data_len);
-
-			if (strncasecmp(frame.header->call_to, g_callsign, MAX_CALLSIGN_LEN) == 0) {
-				// this was sent to our Callsign
-
-				struct t_ax25_header *ax25_header;
-				ax25_header = (struct t_ax25_header *)frame.data;
-				//					debug_print("IORS Packet: pid: %02x \n", ax25_header->pid & 0xff);
-				if ((ax25_header->pid & 0xff) == PID_COMMAND) {
-					handle_command(frame.header->call_from, frame.data, frame.header->data_len);
-
-				}
+	case STATE_TNC_CONNECTED:
+		debug_print("STATE: TNC CONNECTED\n");
+		switch (iors_event->event) {
+		case EVENT_RADIO_DISCONNECTED:
+			g_iors_control_state = STATE_INIT;
+			break;
+		case EVENT_TNC_DISCONNECTED:
+			if (start_tnc() == EXIT_SUCCESS) {
+				g_iors_control_state = STATE_TNC_CONNECTED;
+			} else {
+				g_iors_control_state = STATE_RADIO_CONNECTED;
+				TIMER_T1 = time(0); // Start T1
 			}
+			break;
+		case COMMAND_RX: {
+			//debug_print("COMMAND WHEN TNC CONNECTED: ns %d cmd %d\n",iors_event->nameSpace, iors_event->comarg.command);
+			switch (iors_event->comarg.command) {
+			case SWCmdOpsXBandRepeaterMode:
+				debug_print("Command: Cross band Repeater mode\n");
+				if (radio_set_cross_band_mode() == EXIT_SUCCESS)
+					g_iors_control_state = STATE_CROSS_BAND_REPEATER;
+				break;
+			case SWCmdOpsSSTVMode: {
+				debug_print("Command: Enable SSTV\n");
 
+				sstv_loop = 0;
+				sstv_loop_repeat = 0;
+				sstv_send();
+
+				break;
+			}
+			default:
+				break;
+			}
+			break;
+		}
+
+		default:
+			break;
+		}
+		break;
+
+	case STATE_APRS:
+		debug_print("STATE: APRS\n");
+
+		break;
+
+	case STATE_SSTV: {
+		debug_print("STATE: SSTV\n");
+		switch (iors_event->event) {
+		case EVENT_RADIO_DISCONNECTED:
+			g_iors_control_state = STATE_INIT;
 			break;
 
+		case EVENT_SSTV_EXITED:
+			sstv_stop();
+			break;
+		case TIMER_T1_EXPIRED:
+			sstv_send();
+			break;
+		case TIMER_T3_EXPIRED:
+			sstv_stop();
+			break;
+		case TIMER_T4_EXPIRED:
+			sstv_stop();
+			break;
 
+		case COMMAND_RX: {
+			//debug_print("COMMAND WHEN TNC CONNECTED: ns %d cmd %d\n",iors_event->nameSpace, iors_event->comarg.command);
+			switch (iors_event->comarg.command) {
+//			case SWCmdOpStopSSTV:
+//				break;
+//			}
+			default:
+				break;
+			}
+			break;
+		}
+
+		default:
+			break;
+		}
+		break;
+	}
+	case STATE_CROSS_BAND_REPEATER:
+		debug_print("STATE: CROSS BAND REPEATER\n");
+		switch (iors_event->event) {
+		case EVENT_RADIO_DISCONNECTED:
+			g_iors_control_state = STATE_INIT;
+			break;
+
+		case COMMAND_RX: {
+			switch (iors_event->comarg.command) {
+			case SWCmdOpsSSTVMode: {
+				debug_print("Command: Enable SSTV\n");
+				sstv_loop = 0;
+				sstv_loop_repeat = 0;
+				sstv_send();
+
+				break;
+			}
+			default:
+				break;
+			}
+		    break;
+		}
+
+		default:
+			break;
+		}
+		break;
+
+	default :
+		break;
+	}
+}
+
+/**
+ * sstv_send()
+ * Sub routine to start SSTV sending
+ * aplay will be started in the background
+ * If it can not be started then T1 begins for retries
+ * If it is started then T4 runs as a timeout
+ *
+ */
+int sstv_send() {
+	debug_print("SSTV Send\n");
+	char filename[MAX_FILE_PATH_LEN];
+	if (next_sstv_file(filename) == EXIT_FAILURE) {
+		if (sstv_loop_repeat) {
+			// TODO - reset to start of queue
+		} else {
+			sstv_stop();
 		}
 	} else {
-		usleep(1000); // sleep 1ms
+		/* Then there is a file in the queue to send */
+		sleep(1); // give some time for OK to be sent
+		if (stop_program("Direwolf", tnc_pid) != EXIT_SUCCESS) {
+			// TODO - PANIC.  CANT KILL IT - REBOOT??
+			error_print ("ERROR: CANT KILL DIREWOLF!\n");
+		}
+		if (radio_set_sstv_mode() == EXIT_SUCCESS) {
+			timer_t3_limit = TIMER_T3_DEFAULT_LIMIT;
+			TIMER_T3 = time(0); // start T3 - timeout
+			/* Start APLAY in the background */
+			ptt_serial = open_rts_serial(g_ptt_serial_dev);
+			set_rts(ptt_serial, true);
+			//				char *argv[]={"pysstv","--chan 2","--rate 48000","--resize","--mode PD120",
+			char *argv[]={"aplay","-c2", "-r48000", "-Dhw:2,0", "ariss.wav",(char *)NULL};
+			sstv_pid = start_program(g_sstv_path,argv, g_sstv_logfile_path);
+
+			if (sstv_pid == -1) {
+				set_rts(ptt_serial, false);
+				error_print("Can not start sstv\n");
+				TIMER_T3 = 0;
+				TIMER_T1 = time(0); // start T1
+				g_iors_control_state = STATE_SSTV;
+			} else {
+				debug_print("SSTV playing\n");
+				g_iors_control_state = STATE_SSTV;
+			}
+		}
+
 	}
 	return EXIT_SUCCESS;
 }
 
-int handle_command(char *from_callsign, unsigned char *data, int len) {
-	//debug_print("IORS COMMAND: len: %d \n", len);
+int sstv_stop() {
+	TIMER_T1 = 0;
+	TIMER_T3 = 0;
+	TIMER_T4 = 0;
+	sstv_loop = 0;
+
+	/* Make sure we have collected any status from child process */
+	stop_program("SSTV", sstv_pid);
+	sstv_pid = PID_NOT_RUNNING;
+	debug_print ("SSTV finished\n");
+	set_rts(ptt_serial, false);
+	close_rts_serial(ptt_serial);
+
+	sleep(2); // Allow audio port to become available
+
+	if (start_tnc() == EXIT_SUCCESS) {
+		g_iors_control_state = STATE_TNC_CONNECTED;
+	} else {
+		TIMER_T1 = time(0); // start T1
+		g_iors_control_state = STATE_RADIO_CONNECTED;
+	}
+
+	return EXIT_SUCCESS;
+}
+
+int next_sstv_file(char * filename) {
+	strlcpy(filename,TEST_SSTV_FILE, MAX_FILE_PATH_LEN);
+	return EXIT_SUCCESS;
+}
+
+int valid_command(char *from_callsign, unsigned char *data, int len, struct t_iors_event *command_event) {
+	struct t_ax25_header *ax25_header;
+	ax25_header = (struct t_ax25_header *)data;
+	if ((ax25_header->pid & 0xff) != PID_COMMAND) {
+		return EXIT_FAILURE;
+	}
 	SWCmdUplink *sw_command;
 	sw_command = (SWCmdUplink *)(data + sizeof(AX25_HEADER));
 
@@ -288,17 +453,26 @@ int handle_command(char *from_callsign, unsigned char *data, int len) {
 			debug_print("\n Error : Could not send OK Response to TNC \n");
 		}
 		// usleep(1000*1000);
-		if(DispatchSoftwareCommand(sw_command,true))
-			return EXIT_SUCCESS;
-		else
-			return EXIT_FAILURE;
+//		if(DispatchSoftwareCommand(sw_command,true))
+//			return EXIT_SUCCESS;
+//		else
+//			return EXIT_FAILURE;
+		command_event->event = COMMAND_RX;
+		command_event->nameSpace = sw_command->namespaceNumber;
+		command_event->comarg = sw_command->comArg;
+//		int i;
+//		for (i=0; i<4; i++) {
+//			comarg->arguments[i] = sw_command->comArg.arguments[i];
+//		}
+
+		return EXIT_SUCCESS;
 	} else {
 		int r = send_err(from_callsign, 5);
 		if (r != EXIT_SUCCESS) {
 			debug_print("\n Error : Could not send ERR Response to TNC \n");
 		}
 	}
-	return EXIT_SUCCESS;
+	return EXIT_FAILURE;
 }
 
 /**
@@ -343,44 +517,58 @@ int send_err(char *from_callsign, int err) {
 }
 
 /**
- * Monitor a running child process based on its pid
+ * Monitor a running child process based on its pid.  We only care if
+ * the program was running and it exited.
+ *
  * Returns:
- *   The exit code of the process if it is finished
- *   -9 if it was killed or the pid was invalid
- *   -1 if it is still running
+ *   true if the program changed state and exited
  *
  */
-int monitor_program(pid_t pid) {
-	int status;
-	pid_t w;
-
-//	w = waitpid(pid, &status, WNOHANG);
-	w = waitpid(pid, &status, WUNTRACED | WCONTINUED);
-	if (w == -1) {
-		perror("waitpid");
-		return(EXIT_FAILURE);
+int program_stopped(char * program_name, pid_t pid) {
+	if (kill(pid,0) == 0) {
+		/* Need to run waitpid to gather up any defunc process */
+		int wstatus;
+		int prog_state = waitpid(pid, &wstatus,WNOHANG);
+		if (prog_state == pid) {
+			if (WIFEXITED(wstatus)) {
+				debug_print("%s exited, status=%d\n", program_name, WEXITSTATUS(wstatus));
+			} else {
+				debug_print("%s stopped running abnormally\n",program_name);
+			}
+			pid = PID_NOT_RUNNING;
+			return true;
+		} else if (prog_state == 0) {
+			debug_print("%s Running - PID did not change state\n",program_name);
+			return false;
+		} else {
+			/* This pid was not valid and the program was not running*/
+			return false;
+		}
+	} else {
+		debug_print("%s Not running\n",program_name);
 	}
 
-	if (WIFEXITED(status)) {
-		printf("exited, status=%d\n", WEXITSTATUS(status));
-		return(WEXITSTATUS(status));
-	} else if (WIFSIGNALED(status)) {
-		printf("killed by signal %d\n", WTERMSIG(status));
-		return(PROCESS_KILLED);
-	} else if (WIFSTOPPED(status)) {
-		printf("stopped by signal %d\n", WSTOPSIG(status));
-		return(PROCESS_KILLED);
-	} else if (WIFCONTINUED(status)) {
-		printf("continued\n");
-		return PROCESS_RUNNING;
-	}
 
-	// If we get here we did not recognize the response.  Assume an error
-	return EXIT_FAILURE;
+//	if (WIFEXITED(status)) {
+//		printf("exited, status=%d\n", WEXITSTATUS(status));
+//		return(WEXITSTATUS(status));
+//	} else if (WIFSIGNALED(status)) {
+//		printf("killed by signal %d\n", WTERMSIG(status));
+//		return(PROCESS_KILLED);
+//	} else if (WIFSTOPPED(status)) {
+//		printf("stopped by signal %d\n", WSTOPSIG(status));
+//		return(PROCESS_KILLED);
+//	} else if (WIFCONTINUED(status)) {
+//		printf("continued\n");
+//		return PROCESS_RUNNING;
+//	}
+
+	return false;
 }
 
 /**
  * start_program()
+
  * Start the program given in the command
  *
  * Returns the PID of the started program or 0 of there was an error
@@ -395,11 +583,9 @@ int start_program(char * command, char *argv[], char * logfile) {
 	if (pid==0) { /* child process */
 		printf("CHILD: Running %s with PID %ld\n", argv[0], (long) getpid());
 		int fd = open(logfile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-
 		dup2(fd, 1);   // make stdout go to file
 		dup2(fd, 2);   // make stderr go to file
 		close(fd);     // fd no longer needed - the dup'ed handles are sufficient
-
 		execv(command,argv);
 		exit(127); /* only if execv fails, otherwise this is all replaced */
 	} else { /* pid!=0; parent process */
@@ -408,3 +594,103 @@ int start_program(char * command, char *argv[], char * logfile) {
 	return pid;
 }
 
+/**
+ * stop_program()
+ * Shutdown direwolf with a signal
+ */
+int stop_program(char * program_name, pid_t program_pid) {
+	if (program_pid == PID_NOT_RUNNING) return EXIT_SUCCESS;
+
+	if (kill(program_pid, 0) == 0) { // Signal 0 tests if the pid is running
+		debug_print("%s running. Stopping with SIGINT....\n", program_name);
+		kill(program_pid, SIGINT);
+		int wstatus;
+		int dw_prog_state = waitpid(program_pid, &wstatus,0);
+		if (dw_prog_state != program_pid) {
+			debug_print("%s: Stopping with SIGKILL....\n", program_name);
+			kill(program_pid, SIGKILL);
+			usleep(100*1000); // wait 100ms to exit
+			dw_prog_state = waitpid(program_pid, &wstatus,WNOHANG);
+			if (dw_prog_state != program_pid)
+				return EXIT_FAILURE; // could not stop direwolf.  May need to reboot!
+		} else {
+			debug_print("%s: Stopped with SIGINT\n", program_name);
+		}
+	}
+
+	program_pid = PID_NOT_RUNNING;
+	return EXIT_SUCCESS;
+}
+
+/**
+ * start_tnc()
+ * Run direwolf and store the PID in direwolf_pid
+ */
+int start_tnc() {
+    int running = false;
+	if (kill(tnc_pid,0) != 0) {// pid valid, could be running or a defunct pid waiting to report
+		int wstatus;
+		int prog_state = waitpid(tnc_pid, &wstatus,WNOHANG);
+		if (prog_state == 0) {
+			/* Already running */
+			debug_print("start_tnc(): DIREWOLF ALREADY RUNNING\n");
+			running = true;
+		} else if (prog_state == tnc_pid){
+			debug_print("start_tnc(): DEFUNCT DIREWOLF pid %d Exited\n",tnc_pid);
+		}
+	}
+
+	if (! running) {
+		char *argv[]={"direwolf","-q d","-r 48000",(char *)NULL};
+		tnc_pid = start_program(g_direwolf_path,argv, g_direwolf_logfile_path);
+		if (tnc_pid == -1) {
+			error_print("start_tnc(): Can not start direwolf\n");
+			tnc_pid = PID_NOT_RUNNING;
+			return EXIT_FAILURE;
+		}
+	}
+	sleep(2); // give TNC time to start
+	if (connect_tnc() == EXIT_SUCCESS) {
+		return EXIT_SUCCESS;
+	} else {
+		return EXIT_FAILURE;
+	}
+}
+
+int connect_tnc() {
+	int rc = EXIT_FAILURE;
+
+	/* Connect to direwolf*/
+	rc = tnc_connect("127.0.0.1", AGW_PORT, g_bit_rate, g_max_frames_in_tx_buffer);
+	if (rc == EXIT_SUCCESS) {
+		rc = tnc_start_monitoring('k'); // k monitors raw frames, required to process UI frames
+		if (rc != EXIT_SUCCESS) {
+			error_print("\n Error : Could not monitor TNC k frames \n");
+		}
+		rc = tnc_start_monitoring('m'); // monitors connected frames, also required to monitor T frames to manage the TX frame queue
+		if (rc != EXIT_SUCCESS) {
+			error_print("\n Error : Could not monitor TNC m frames\n");
+		}
+
+		/**
+		 * Start a thread to listen to the TNC.  This will write all received frames into
+		 * a circular buffer.  This thread runs in the background and is always ready to
+		 * receive data from the TNC.
+		 *
+		 * The receive loop reads frames from the buffer and processes
+		 * them when we have time.
+		 */
+		char *name = "TNC Listen Thread";
+		rc = pthread_create( &tnc_listen_pthread, NULL, tnc_listen_process, (void*) name);
+		if (rc != EXIT_SUCCESS) {
+			error_print("FATAL. Could not start the TNC listen thread.\n");
+			exit(rc);
+		}
+
+		debug_print ("Connected to tnc\n");
+		return EXIT_SUCCESS;
+	} else {
+		debug_print ("Could not connect to tnc\n");
+	}
+	return EXIT_FAILURE;
+}

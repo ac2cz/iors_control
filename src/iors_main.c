@@ -193,43 +193,6 @@ int main(int argc, char *argv[])  {
 
     iors_control_loop();
 
-#ifdef JUNK
-    //	char * data = "MS BILL\r";
-    //	char * data = "CC 0\r";
-    //	char * data = "FO 0\r"; // Read VFO channel - 0 is A 1 is B
-    //	char * data = "DL 0\r"; // Set Dual band 0, single band 1
-    //	char * data = "VM 0\r"; // Returns VFO mode
-        //    char * data_set = "CC 1,0144000000,0,0,0,0,0,0,08,08,000,00600000,0,0000000000,0\r";
-    //    radio_send_command(data_set, strlen(data_set));
-
-    //radio_set_aprs_mode();
-    //radio_set_sstv_mode();
-//    radio_set_cross_band_mode();
-
-
-
-    if (radio_program_pm_and_data_band(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF, RADIO_EXT_DATA_BAND_TXA_RXB, RADIO_EXT_DATA_SPEED_9600) != EXIT_SUCCESS) {
-    	error_print("FATAL ERROR: Can not setup the radio\n");
-    	return EXIT_FAILURE;
-    }
-
-
-    if (radio_set_channel(g_serial_dev, RADIO_RPT01_TX_CHANNEL, RADIO_RPT01_RX_CHANNEL) != EXIT_SUCCESS) {
-    	debug_print("ERROR: Can't change channels\n");
-    	return EXIT_FAILURE;
-	}
-
-//    char response[25];
-//    int rlen = 10;
-//	int n = radio_send_command(g_serial_dev, RADIO_CMD_SET_TNC_MODE, strlen(RADIO_CMD_SET_TNC_MODE), response, rlen);
-//	if (n < 0) {
-//		debug_print("Can not send TNC MODE command to radio\n");
-//		return EXIT_FAILURE;
-//	}
-//	response[n] = 0;
-//	debug_print("TNC MODE: %s",response);
-
-#endif
     cleanup();
     return EXIT_SUCCESS;
 }

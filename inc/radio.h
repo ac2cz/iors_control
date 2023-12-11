@@ -71,6 +71,7 @@ void radio_closeserial(int fd);
 int radio_openserial(char *devicename);
 int setRTS(int fd, int level);
 int radio_check_initial_connection(char *serialdev);
+int radio_check_connection(char *serialdev);
 int radio_set_cross_band_mode();
 int radio_set_aprs_mode();
 int radio_set_sstv_mode();

@@ -37,7 +37,6 @@
 
 /* Forward declarations */
 int radio_reset_speed(int fd);
-int radio_check_connection(char *serialdev);
 int radio_close_program_mode(int fd);
 int radio_program_write(int fd, char * data, int len);
 int radio_program_read(int fd, char * buf, int len);
@@ -308,7 +307,8 @@ int radio_check_connection(char *serialdev) {
 		debug_print("Can not connect to radio: %s.  Got id %s\n", g_radio_id, response);
 		return EXIT_FAILURE;
 	}
-	debug_print("Connected: %s",response);
+	response[n-1] = 0; // consume \r
+	debug_print("Connected: %s\n",response);
 	return EXIT_SUCCESS;
 }
 /**
