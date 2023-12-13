@@ -18,8 +18,8 @@
 /* Forwards */
 int store_last_command_time();
 int CommandTimeOK(SWCmdUplink *uplink);
-int OpsSWCommands(CommandAndArgs *comarg);
-int TlmSWCommands(CommandAndArgs *comarg);
+//int OpsSWCommands(CommandAndArgs *comarg);
+//int TlmSWCommands(CommandAndArgs *comarg);
 
 uint32_t last_command_time = 0x0; /* Keep track of the time that the last command was received */
 
@@ -57,6 +57,7 @@ int store_last_command_time() {
 	return EXIT_SUCCESS;
 }
 
+#ifdef OLD
 /**
  * DecodeSoftwareCommand()
  *
@@ -75,6 +76,7 @@ int DecodeSoftwareCommand(SWCmdUplink *softwareCommand) {
     }
     return false;
 }
+#endif
 
 int AuthenticateSoftwareCommand(SWCmdUplink *uplink) {
     uint8_t localSecureHash[32];
@@ -143,6 +145,7 @@ int CommandTimeOK(SWCmdUplink *uplink) {
     return true;
 }
 
+#ifdef OLD
 int DispatchSoftwareCommand(SWCmdUplink *uplink,bool local) {
     uint8_t nameSpace;
 
@@ -279,3 +282,5 @@ int TlmSWCommands(CommandAndArgs *comarg) {
     }
     return TRUE;
 }
+
+#endif

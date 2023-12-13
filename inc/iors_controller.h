@@ -11,6 +11,7 @@
 #include "iors_command.h"
 
 #define TIMER_T1_DEFAULT_LIMIT 3
+#define TIMER_T2_DEFAULT_LIMIT 10
 #define TIMER_T3_DEFAULT_LIMIT 60 * 3; // 3 min timeout
 #define TIMER_T4_DEFAULT_LIMIT 60 * 60 * 8; // 8 hours
 #define PERIOD_TO_CHECK_RADIO_CONNECTED 10 // 60*1 // Every minute
@@ -51,6 +52,7 @@ enum IORS_Event {
 	,EVENT_PACSAT_EXITED
 	,COMMAND_RX
 	,TIMER_T1_EXPIRED
+	,TIMER_T2_EXPIRED
 	,TIMER_T3_EXPIRED
 	,TIMER_T4_EXPIRED
 };

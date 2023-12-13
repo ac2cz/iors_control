@@ -54,11 +54,15 @@ typedef enum {
 
 typedef enum {
 	 SWCmdOpsReserved=0
-	,SWCmdOpsSafeMode
+	,SWCmdOpsPM1 = 1
 	,SWCmdOpsXBandRepeaterMode = 2
-	,SWCmdOpsSSTVMode = 3
-	,SWCmdOpsAPRSMode = 4
-	,SWCmdOpsPacsatMode = 5
+	,SWCmdOpsSSTVSend = 3
+	,SWCmdOpsSSTVLoop = 4
+	,SWCmdOpsSSTVStop = 5
+	,SWCmdOpsAPRSMode = 6
+	,SWCmdOpsPacsatMode = 7
+	,SWCmdOpsExecuteScript = 8
+	,SWCmdOpsTime = 9
     ,SWCmdOpsNumberOfCommands
 }SWOpsCommands;
 
@@ -75,12 +79,14 @@ typedef enum {
 	 SwCmdPacsatReserved=0
 	,SWCmdPacsatEnablePB
 	,SWCmdPacsatEnableUplink
+	,SWCmdPacsatDeleteFile
+	,SWCmdPacsatInstallFile
 	,SwCmdPacsatNumberOfCommands
 }SWPacsatCommands;
 
 int load_last_commmand_time();
-int DecodeSoftwareCommand(SWCmdUplink *softwareCommand);
+//int DecodeSoftwareCommand(SWCmdUplink *softwareCommand);
 int AuthenticateSoftwareCommand(SWCmdUplink *uplink);
-int DispatchSoftwareCommand(SWCmdUplink *uplink,bool local);
+//int DispatchSoftwareCommand(SWCmdUplink *uplink,bool local);
 
 #endif /* IORS_COMMAND_H_ */

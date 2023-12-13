@@ -277,7 +277,7 @@ int radio_set_aprs_mode() {
 
 int radio_set_sstv_mode() {
 	if (g_radio_pm == RADIO_PM0 && g_radio_cross_band_repeater == RADIO_XBAND_RPT_OFF) {
-		debug_print("Already in PM0 with xross band repeater off\n");
+		debug_print("Already in PM0 with cross band repeater off\n");
 	} else {
 		if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF) != EXIT_SUCCESS) {
 			debug_print("ERROR: Can not program the radio\n");
@@ -308,7 +308,7 @@ int radio_check_connection(char *serialdev) {
 		return EXIT_FAILURE;
 	}
 	response[n-1] = 0; // consume \r
-	debug_print("Connected: %s\n",response);
+	//debug_print("Connected: %s\n",response);
 	return EXIT_SUCCESS;
 }
 /**

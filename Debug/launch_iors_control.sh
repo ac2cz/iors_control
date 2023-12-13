@@ -10,6 +10,12 @@ COMMAND=$HOME_DIR/bin/$BIN
 
 echo Launching IORS CONTROL
 
+# Stop any old sub programs if they are running
+# But this means that running a second copy will interfere with the first
+killall -q direwolf
+killall -q aplay
+killall -q pi_pacsat
+
 # If the config exists on the USB drive then use it
 if [ -f "$USB_DIR/$CONFIG_FILE" ]; then
     CONFIG=$USB_DIR/$CONFIG_FILE

@@ -79,6 +79,8 @@ void load_config(char *filename) {
 
 				} else if (strcmp(key, CONFIG_SSTV_PATH) == 0) {
 					strlcpy(g_sstv_path, value,sizeof(g_sstv_path));
+				} else if (strcmp(key, CONFIG_SSTV_QUEUE_PATH) == 0) {
+					strlcpy(g_sstv_queue_path, value,sizeof(g_sstv_queue_path));
 				} else if (strcmp(key, CONFIG_SSTV_LOGFILE_PATH) == 0) {
 					strlcpy(g_sstv_logfile_path, value,sizeof(g_sstv_logfile_path));
 
