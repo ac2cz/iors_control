@@ -81,6 +81,7 @@ int TIMER_T1 = 0;
 int TIMER_T2 = 0;
 int TIMER_T3 = 0;
 int TIMER_T4 = 0;
+int retries_N = 0;
 
 time_t last_time_checked_radio = 0;
 time_t last_time_checked_tnc = 0;
@@ -142,7 +143,6 @@ void iors_control_loop() {
 			last_time_checked_tnc = now;
 		}
 
-
 		if (TIMER_T1 != 0 && (now - TIMER_T1) > timer_t1_limit) {
 			/* Timer T1 was running and expired */
 			iors_event.event = TIMER_T1_EXPIRED;
@@ -179,6 +179,7 @@ void iors_control_loop() {
 			//if (sstv_pid != PID_NOT_RUNNING) {
 			if (program_stopped("SSTV", sstv_pid)) {
 				iors_event.event = EVENT_SSTV_EXITED;
+				//EVENT_SSTV_FAILED;
 				iors_process_event(&iors_event);
 			}
 
@@ -235,9 +236,11 @@ void iors_process_event(struct t_iors_event *iors_event) {
 			break;
 
 		case TIMER_T1_EXPIRED:
+			retries_N++;
 		case EVENT_TNC_DISCONNECTED:
 			if (start_tnc() == EXIT_SUCCESS) {
 				g_iors_control_state = STATE_TNC_CONNECTED;
+				retries_N = 0;
 			} else {
 				TIMER_T1 = time(0); // Start T1
 			}
@@ -559,13 +562,9 @@ int sstv_stop() {
 /**
  * next_sstv_file()
  * Return the path to the next file in the sstv queue
- * TODO - decide if this logic should be in a script so it can be easily updated or replaced later
- *        It is just file manipulation
+ *
  */
 int next_sstv_file(char * filename) {
-//	strlcpy(filename,g_sstv_queue_path, MAX_FILE_PATH_LEN);
-//	strlcat(filename,"/", MAX_FILE_PATH_LEN);
-//	strlcat(filename,TEST_SSTV_FILE, MAX_FILE_PATH_LEN);
 
 
 	DIR * d = opendir(g_sstv_queue_path);
