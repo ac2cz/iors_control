@@ -48,9 +48,8 @@
 #define RADIO_CMD_SET_CHANNEL_MODE "CD 1\r"
 #define RADIO_CMD_SET_FREQ_MODE "CD 0\r"
 
-#define RADIO_CMD_GET_TNC_MODE "TN\r"
-#define RADIO_CMD_SET_TNC_MODE "TN 0,2\r"
-
+#define RADIO_CMD_GET_TIME "RT\r"
+#define RADIO_CMD_SET_TIME "RT "
 
 #define RADIO_CMD_MEM_CHANNEL "MR "
 
@@ -72,6 +71,8 @@ int radio_openserial(char *devicename);
 int setRTS(int fd, int level);
 int radio_check_initial_connection(char *serialdev);
 int radio_check_connection(char *serialdev);
+int radio_panel_get_time(char *serialdev, time_t *now);
+int radio_panel_set_time(char *serialdev, time_t *now);
 int radio_set_cross_band_mode();
 int radio_set_aprs_mode();
 int radio_set_sstv_mode();

@@ -27,6 +27,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include <string.h>
 
@@ -107,8 +108,8 @@ int radio_openserial(char *devicename) {
     options.c_cflag &= ~CSIZE;
     options.c_cflag |= CS8;
 
-    options.c_cflag |= CRTSCTS; /* Enable hardware flow control */
-//    options.c_cflag &= ~CRTSCTS; /* disable hardware flow contol */
+//    options.c_cflag |= CRTSCTS; /* Enable hardware flow control */
+    options.c_cflag &= ~CRTSCTS; /* disable hardware flow contol */
     options.c_lflag &= ~(ICANON | ECHO | ECHOE | ECHONL | ISIG | IEXTEN); /* RAW Input */
     options.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP
             |INLCR|IGNCR|ICRNL|IXON);
@@ -369,6 +370,84 @@ int radio_check_initial_connection(char *serialdev) {
 	}
 //	debug_print("PANEL FW: %s",response);
 
+	return EXIT_SUCCESS;
+}
+
+int myPow(int x,int n)
+{
+    int i; /* Variable used in loop counter */
+    int number = 1;
+
+    for (i = 0; i < n; ++i)
+        number *= x;
+
+    return(number);
+}
+
+int ascii_to_dec(char * c, int len) {
+	int r = 0;
+	int m = 0;
+	while (len > 0) {
+		int p = myPow(10, m);
+		int v = (c[len-1]-48);
+		r = r + (v * p);
+		len--;
+		m++;
+	}
+	return r;
+}
+
+int radio_panel_get_time(char *serialdev, time_t *now) {
+	int rlen = 25;
+	char response[rlen];
+
+	/* Check the radio ID */
+	int n = radio_send_command(serialdev, RADIO_CMD_GET_TIME, strlen(RADIO_CMD_GET_TIME), response, rlen);
+	if (n < 0) {
+		debug_print("Can not send time command to radio\n");
+		return EXIT_FAILURE;
+	}
+	debug_print("TIME: %s",response);
+
+	struct tm t;
+//	t.tm_mon = (response[7]-48) * (10 + response[8]-48);
+	t.tm_year = ascii_to_dec(&response[3],4) - 1900;
+	t.tm_mon = ascii_to_dec(&response[7],2) - 1;
+	t.tm_mday = ascii_to_dec(&response[9],2);
+	t.tm_hour = ascii_to_dec(&response[11],2);
+	t.tm_min = ascii_to_dec(&response[13],2);
+	t.tm_sec = ascii_to_dec(&response[15],2);
+	t.tm_isdst = 0;
+	//debug_print("%d/%d/%d %d:%d:%d\n",t.tm_year, t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+
+	*now = mktime(&t);
+
+	return EXIT_SUCCESS;
+}
+
+int radio_panel_set_time(char *serialdev, time_t *now) {
+	struct tm *t;
+	t = gmtime(now);
+//	debug_print("Set to %d/%d/%d %d:%d:%d\n",t->tm_year, t->tm_mon, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+
+	int rlen = 25;
+	char response[rlen];
+	/* Set the time on the radio */
+	/* Set the requested channels */
+	char command[25];
+	char time_str[16];
+	strlcpy(command, RADIO_CMD_SET_TIME, sizeof(command));
+	snprintf(time_str, 16, "%04d%02d%02d%02d%02d%02d\r",t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+	strlcat(command, time_str,sizeof(command));
+	//debug_print("Sent command: %s to radio\n", command);
+
+	int n = radio_send_command(serialdev, command, strlen(command), response, rlen);
+	if (n < 18) {
+		debug_print("Can not send command %s to radio\n", command);
+		return EXIT_FAILURE;
+	} else {
+		debug_print("Time now: %s\n",response);
+	}
 	return EXIT_SUCCESS;
 }
 

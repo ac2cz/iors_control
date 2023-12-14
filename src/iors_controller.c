@@ -31,6 +31,9 @@
 #include <sys/wait.h>
 #include <pthread.h>
 #include <dirent.h>
+#include <errno.h>
+#include <time.h>
+#include <sys/time.h>
 
 /* Program includes */
 #include "config.h"
@@ -109,7 +112,14 @@ void iors_control_loop() {
 		if (last_time_checked_radio == 0) {
 			/* Startup - is the right radio connected */
 			if (radio_check_initial_connection(g_serial_dev) == EXIT_SUCCESS) {
-				// TODO - If we can then set the time here from the radio
+				// Set the time on the PI from the radio RTC.  NB: This will fail if not run as root
+				struct timeval tval;
+				if (radio_panel_get_time(g_ptt_serial_dev, &tval.tv_sec) == EXIT_SUCCESS) {
+					tval.tv_usec = 0;
+					if (settimeofday(&tval, 0) != 0) {
+						error_print ("error %d setting time to %d\n", errno, tval.tv_sec);
+					}
+				}
 				iors_event.event = EVENT_RADIO_CONNECTED;
 				radio_connected = true;
 				last_time_checked_radio = now;
@@ -299,11 +309,27 @@ void iors_process_event(struct t_iors_event *iors_event) {
 
 				break;
 			}
-			case SWCmdOpsAPRSMode:
+			case SWCmdOpsAPRSMode: {
 				debug_print("Command: APRS mode\n");
 				if (radio_set_aprs_mode() == EXIT_SUCCESS)
 					g_iors_control_state = STATE_APRS;
 				break;
+			}
+			case SWCmdOpsTime: {
+				time_t t = iors_event->comarg.arguments[0] + (iors_event->comarg.arguments[1] << 16);
+				//debug_print("Command: Set time to %ld\n", t);
+				if (radio_panel_set_time(g_ptt_serial_dev,&t) == EXIT_SUCCESS) {
+					struct timeval tval;
+					tval.tv_usec = 0;
+					tval.tv_sec = t;
+					/* Set the time on the PI.  This will fail if not root */
+					if (settimeofday(&tval, 0) != 0) {
+						error_print ("error %d setting time to %d\n", errno, tval.tv_sec);
+					}
+				}
+
+				break;
+			}
 			default:
 				break;
 			}
@@ -600,7 +626,9 @@ int valid_command(char *from_callsign, unsigned char *data, int len, struct t_io
 
 	debug_print("Received Command %04x addr: %d names: %d cmd %d from %s length %d\n",(sw_command->dateTime),
 			sw_command->address, sw_command->namespaceNumber, (sw_command->comArg.command), from_callsign, len);
-
+	int i;
+//	for (i=0; i<4; i++)
+//		debug_print("arg:%d %d\n",i,sw_command->comArg.arguments[i]);
 	/* Pass the data to the command processor */
 	if(AuthenticateSoftwareCommand(sw_command)){
 		//debug_print("Command Authenticated!\n");
