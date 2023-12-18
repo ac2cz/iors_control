@@ -252,6 +252,7 @@ void iors_process_event(struct t_iors_event *iors_event) {
 				g_iors_control_state = STATE_TNC_CONNECTED;
 				retries_N = 0;
 			} else {
+				timer_t1_limit = 10; // 10 second pause
 				TIMER_T1 = time(0); // Start T1
 			}
 			break;
@@ -533,7 +534,7 @@ int sstv_send() {
 			ptt_serial = open_rts_serial(g_ptt_serial_dev);
 			set_rts(ptt_serial, true);
 			//				char *argv[]={"pysstv","--chan 2","--rate 48000","--resize","--mode PD120",
-			char *argv[]={"aplay","-c2", "-r48000", "-Dhw:2,0", filename,(char *)NULL};
+			char *argv[]={"aplay","-c2", "-r48000", "-Dhw:0,0", filename,(char *)NULL};
 			sstv_pid = start_program(g_sstv_path,argv, g_sstv_logfile_path);
 
 			if (sstv_pid == -1) {
@@ -570,6 +571,7 @@ int sstv_stop() {
 	if (start_tnc() == EXIT_SUCCESS) {
 		g_iors_control_state = STATE_TNC_CONNECTED;
 	} else {
+		timer_t1_limit = 10; // 10 second pause
 		TIMER_T1 = time(0); // start T1
 		g_iors_control_state = STATE_RADIO_CONNECTED;
 		return EXIT_FAILURE;
@@ -816,7 +818,7 @@ int start_tnc() {
 			debug_print("start_tnc(): DIREWOLF ALREADY RUNNING\n");
 			running = true;
 		} else if (prog_state == tnc_pid){
-			debug_print("start_tnc(): DEFUNCT DIREWOLF pid %d Exited\n",tnc_pid);
+			debug_print("start_tnc(): DEFUNCT DIREWOLF pid %d Exited.\n",tnc_pid);
 		}
 	}
 
