@@ -55,6 +55,7 @@ extern int g_radio_cross_band_repeater;
 #define CONFIG_DIREWOLF_CONFIG_PATH "direwolf_config_path"
 
 #define CONFIG_SSTV_PATH "sstv_path"
+#define CONFIG_SSTV_AUDIO_DEV "sstv_audio_device"
 #define CONFIG_SSTV_QUEUE_PATH "sstv_queue_path"
 #define CONFIG_SSTV_LOGFILE_PATH "sstv_logfile_path"
 #define CONFIG_SSTV_SENT "sstv_sent"
@@ -79,6 +80,7 @@ extern char g_direwolf_logfile_path[MAX_FILE_PATH_LEN];
 extern char g_direwolf_config_path[MAX_FILE_PATH_LEN];
 
 extern char g_sstv_path[MAX_FILE_PATH_LEN];
+extern char g_sstv_audio_dev[MAX_FILE_PATH_LEN];
 extern char g_sstv_queue_path[MAX_FILE_PATH_LEN];
 extern char g_sstv_logfile_path[MAX_FILE_PATH_LEN];
 

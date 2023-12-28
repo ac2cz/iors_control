@@ -49,9 +49,9 @@ void load_config(char *filename) {
 			value = strtok(NULL, search);
 			if (value != NULL) { /* Ignore line with no key value pair */;
 
-				debug_print(" %s",key);
+				//debug_print(" %s",key);
 				value[strcspn(value,"\n")] = 0; // Move the nul termination to get rid of the new line
-				debug_print(" = %s\n",value);
+				//debug_print(" = %s\n",value);
 				if (strcmp(key, CONFIG_BIT_RATE) == 0) {
 					int rate = atoi(value);
 					g_bit_rate = rate;
@@ -79,6 +79,8 @@ void load_config(char *filename) {
 
 				} else if (strcmp(key, CONFIG_SSTV_PATH) == 0) {
 					strlcpy(g_sstv_path, value,sizeof(g_sstv_path));
+				} else if (strcmp(key, CONFIG_SSTV_AUDIO_DEV) == 0) {
+					strlcpy(g_sstv_audio_dev, value,sizeof(g_sstv_audio_dev));
 				} else if (strcmp(key, CONFIG_SSTV_QUEUE_PATH) == 0) {
 					strlcpy(g_sstv_queue_path, value,sizeof(g_sstv_queue_path));
 				} else if (strcmp(key, CONFIG_SSTV_LOGFILE_PATH) == 0) {

@@ -123,10 +123,19 @@ void iors_control_loop() {
 				iors_event.event = EVENT_RADIO_CONNECTED;
 				radio_connected = true;
 				last_time_checked_radio = now;
+				retries_N = 0;
 				iors_process_event(&iors_event);
 			} else {
 				/* Nothing to do here but wait for the radio to become available */
-				sleep(10);
+				// TODO - in the design this retry is part of the state machine.  If it is here then we need to count
+				// retries and trigger restart/reboot if fails
+				retries_N++;
+				if (retries_N > 10) {
+					// TODO - save a persistent flag here to indicate we have tried restart.  If we end up here again then reboot
+					exit(1); // try restarting to re-establish connection
+				} else {
+					sleep(10);
+				}
 			}
 		} else if ((now - last_time_checked_radio) > PERIOD_TO_CHECK_RADIO_CONNECTED) {
 			/* Check if the radio is connected */
@@ -534,7 +543,7 @@ int sstv_send() {
 			ptt_serial = open_rts_serial(g_ptt_serial_dev);
 			set_rts(ptt_serial, true);
 			//				char *argv[]={"pysstv","--chan 2","--rate 48000","--resize","--mode PD120",
-			char *argv[]={"aplay","-c2", "-r48000", "-Dhw:0,0", filename,(char *)NULL};
+			char *argv[]={"aplay","-c2", "-r48000", g_sstv_audio_dev, filename,(char *)NULL};
 			sstv_pid = start_program(g_sstv_path,argv, g_sstv_logfile_path);
 
 			if (sstv_pid == -1) {
@@ -763,7 +772,11 @@ int start_program(char * command, char *argv[], char * logfile) {
 		return -1;
 	}
 	if (pid==0) { /* child process */
-		printf("CHILD: Running %s with PID %ld\n", argv[0], (long) getpid());
+		debug_print("CHILD: Running %s with PID %ld: ", argv[0], (long) getpid());
+		int i=0;
+		while (argv[i] != NULL)
+			debug_print("%s ",argv[i++]);
+		debug_print("\n");
 		int fd = open(logfile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
 		dup2(fd, 1);   // make stdout go to file
 		dup2(fd, 2);   // make stderr go to file

@@ -67,6 +67,7 @@ char g_direwolf_logfile_path[MAX_FILE_PATH_LEN] = "/tmp/direwolf.log";
 char g_direwolf_config_path[MAX_FILE_PATH_LEN] = "~/direwolf.conf";
 
 char g_sstv_path[MAX_FILE_PATH_LEN] = "sstv.sh";
+char g_sstv_audio_dev[MAX_FILE_PATH_LEN] = "-Dhw:0,0";
 char g_sstv_queue_path[MAX_FILE_PATH_LEN] = "/mnt/usb-disk/ariss/sstv_q";
 char g_sstv_logfile_path[MAX_FILE_PATH_LEN] = "/tmp/pysstv.log";
 
