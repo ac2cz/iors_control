@@ -51,6 +51,12 @@
 
 /* Forward declarations */
 void iors_process_event(struct t_iors_event *iors_event);
+void iors_process_pacsat(struct t_iors_event *iors_event);
+void iors_tnc_connected(struct t_iors_event *iors_event);
+void iors_aprs(struct t_iors_event *iors_event);
+void iors_sstv(struct t_iors_event *iors_event);
+void iors_cross_band_repeater(struct t_iors_event *iors_event);
+
 int sstv_send();
 int sstv_stop();
 int next_sstv_file(char * filename);
@@ -236,7 +242,7 @@ void iors_control_loop() {
 
 void iors_process_event(struct t_iors_event *iors_event) {
 	switch (g_iors_control_state) {
-	case STATE_INIT: // Initialization state
+	case STATE_INIT: {// Initialization state
 		debug_print("STATE: INIT\n");
 		if (iors_event->event == EVENT_RADIO_CONNECTED) {
 			g_iors_control_state = STATE_RADIO_CONNECTED;
@@ -247,6 +253,8 @@ void iors_process_event(struct t_iors_event *iors_event) {
 			}
 		}
 		break;
+	}
+
 	case STATE_RADIO_CONNECTED: {
 		debug_print("STATE: RADIO CONNECTED\n");
 		switch (iors_event->event) {
@@ -272,246 +280,342 @@ void iors_process_event(struct t_iors_event *iors_event) {
 		break;
 	}
 
-	case STATE_TNC_CONNECTED:
-		debug_print("STATE: TNC CONNECTED\n");
-		switch (iors_event->event) {
-		case EVENT_RADIO_DISCONNECTED:
-			g_iors_control_state = STATE_INIT;
+	case STATE_TNC_CONNECTED: {
+		iors_tnc_connected(iors_event);
+		break;
+	}
+
+	case STATE_APRS: {
+		iors_aprs(iors_event);
+		break;
+	}
+
+	case STATE_SSTV: {
+		iors_sstv(iors_event);
+		break;
+	}
+	case STATE_CROSS_BAND_REPEATER: {
+		iors_cross_band_repeater(iors_event);
+		break;
+	}
+
+	case STATE_PACSAT_CONNECTED: {
+		iors_process_pacsat(iors_event);
+		break;
+	}
+
+	default :
+		break;
+		}
+}
+
+void iors_tnc_connected(struct t_iors_event *iors_event) {
+	debug_print("STATE: TNC CONNECTED\n");
+	switch (iors_event->event) {
+	case EVENT_RADIO_DISCONNECTED:
+		g_iors_control_state = STATE_INIT;
+		break;
+	case EVENT_TNC_EXITED:
+	case EVENT_TNC_DISCONNECTED:
+		if (start_tnc() == EXIT_SUCCESS) {
+			g_iors_control_state = STATE_TNC_CONNECTED;
+		} else {
+			g_iors_control_state = STATE_RADIO_CONNECTED;
+			TIMER_T1 = time(0); // Start T1
+		}
+		break;
+
+	case COMMAND_RX: {
+		//debug_print("COMMAND WHEN TNC CONNECTED: ns %d cmd %d\n",iors_event->nameSpace, iors_event->comarg.command);
+		switch (iors_event->comarg.command) {
+		case SWCmdOpsPM1:
+			debug_print("Command: PM1\n");
+			if (radio_program_pm(g_serial_dev, RADIO_PM1, RADIO_XBAND_RPT_OFF) != EXIT_SUCCESS) {
+				debug_print("ERROR: Can not program the radio\n");
+			////	send_err
+			}
 			break;
-		case EVENT_TNC_EXITED:
-		case EVENT_TNC_DISCONNECTED:
-			if (start_tnc() == EXIT_SUCCESS) {
-				g_iors_control_state = STATE_TNC_CONNECTED;
+		case SWCmdOpsXBandRepeaterMode:
+			debug_print("Command: Cross band Repeater mode: %d\n", iors_event->comarg.arguments[0]);
+			if (iors_event->comarg.arguments[0]) {
+			if (radio_set_cross_band_mode(RADIO_XBAND_RPT_ON) == EXIT_SUCCESS)
+				g_iors_control_state = STATE_CROSS_BAND_REPEATER;
 			} else {
-				g_iors_control_state = STATE_RADIO_CONNECTED;
-				TIMER_T1 = time(0); // Start T1
+				if (radio_set_cross_band_mode(RADIO_XBAND_RPT_OFF) == EXIT_SUCCESS)
+					g_iors_control_state = STATE_TNC_CONNECTED;
 			}
 			break;
+		case SWCmdOpsSSTVSend: {
+			debug_print("Command: Enable SSTV\n");
+			sstv_loop = 0;
+			sstv_loop_repeat = 0;
+			sstv_send();
 
-		case COMMAND_RX: {
-			//debug_print("COMMAND WHEN TNC CONNECTED: ns %d cmd %d\n",iors_event->nameSpace, iors_event->comarg.command);
-			switch (iors_event->comarg.command) {
-			case SWCmdOpsPM1:
-				debug_print("Command: PM1\n");
-				if (radio_program_pm(g_serial_dev, RADIO_PM1, RADIO_XBAND_RPT_OFF) != EXIT_SUCCESS) {
-					debug_print("ERROR: Can not program the radio\n");
-				////	send_err
+			break;
+		}
+		case SWCmdOpsSSTVLoop: {
+			debug_print("Command: Enable SSTV LOOP\n");
+			sstv_loop = 1;
+			sstv_loop_repeat = 0;
+			sstv_send();
+
+			break;
+		}
+		case SWCmdOpsAPRSMode: {
+		    // TODO - duplicate code put in sub
+			debug_print("Command: APRS mode: %d\n", iors_event->comarg.arguments[0]);
+			if (iors_event->comarg.arguments[0] == 0) {
+				// TODO - do we need to force the channels to known setting?
+				if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF) == EXIT_SUCCESS) {
+					g_iors_control_state = STATE_TNC_CONNECTED;
 				}
-				break;
-			case SWCmdOpsXBandRepeaterMode:
-				debug_print("Command: Cross band Repeater mode: %d\n", iors_event->comarg.arguments[0]);
-				if (iors_event->comarg.arguments[0]) {
-				if (radio_set_cross_band_mode(RADIO_XBAND_RPT_ON) == EXIT_SUCCESS)
-					g_iors_control_state = STATE_CROSS_BAND_REPEATER;
-				} else {
-					if (radio_set_cross_band_mode(RADIO_XBAND_RPT_OFF) == EXIT_SUCCESS)
-						g_iors_control_state = STATE_TNC_CONNECTED;
-				}
-				break;
-			case SWCmdOpsSSTVSend: {
-				debug_print("Command: Enable SSTV\n");
-				sstv_loop = 0;
-				sstv_loop_repeat = 0;
-				sstv_send();
-
-				break;
-			}
-			case SWCmdOpsSSTVLoop: {
-				debug_print("Command: Enable SSTV LOOP\n");
-				sstv_loop = 1;
-				sstv_loop_repeat = 0;
-				sstv_send();
-
-				break;
-			}
-			case SWCmdOpsAPRSMode: {
-				debug_print("Command: APRS mode\n");
+			} else {
 				if (radio_set_aprs_mode() == EXIT_SUCCESS)
 					g_iors_control_state = STATE_APRS;
-				break;
-			}
-			case SWCmdOpsTime: {
-				time_t t = iors_event->comarg.arguments[0] + (iors_event->comarg.arguments[1] << 16);
-				//debug_print("Command: Set time to %ld\n", t);
-				if (radio_panel_set_time(g_ptt_serial_dev,&t) == EXIT_SUCCESS) {
-					struct timeval tval;
-					tval.tv_usec = 0;
-					tval.tv_sec = t;
-					/* Set the time on the PI.  This will fail if not root */
-					if (settimeofday(&tval, 0) != 0) {
-						error_print ("error %d setting time to %d\n", errno, tval.tv_sec);
-					}
-				}
-
-				break;
-			}
-			default:
-				break;
 			}
 			break;
 		}
+		case SWCmdOpsTime: {
+			time_t t = iors_event->comarg.arguments[0] + (iors_event->comarg.arguments[1] << 16);
+			//debug_print("Command: Set time to %ld\n", t);
+			if (radio_panel_set_time(g_ptt_serial_dev,&t) == EXIT_SUCCESS) {
+				struct timeval tval;
+				tval.tv_usec = 0;
+				tval.tv_sec = t;
+				/* Set the time on the PI.  This will fail if not root */
+				if (settimeofday(&tval, 0) != 0) {
+					error_print ("error %d setting time to %d\n", errno, tval.tv_sec);
+				}
+			}
 
+			break;
+		}
 		default:
 			break;
 		}
 		break;
+	}
 
-		case STATE_APRS: {
-			debug_print("STATE: APRS\n");
-			switch (iors_event->event) {
-			case EVENT_RADIO_DISCONNECTED:
-				g_iors_control_state = STATE_INIT;
-				break;
-			case EVENT_TNC_EXITED:
-			case EVENT_TNC_DISCONNECTED:
-				if (start_tnc() == EXIT_SUCCESS) {
-					g_iors_control_state = STATE_TNC_CONNECTED;
-				} else {
-					g_iors_control_state = STATE_RADIO_CONNECTED;
-					TIMER_T1 = time(0); // Start T1
-				}
-				break;
-			case COMMAND_RX: {
-				switch (iors_event->comarg.command) {
-				case SWCmdOpsXBandRepeaterMode:
-					debug_print("Command: Cross band Repeater mode\n");
-					if (radio_set_cross_band_mode(RADIO_XBAND_RPT_ON) == EXIT_SUCCESS)
-						g_iors_control_state = STATE_CROSS_BAND_REPEATER;
-					break;
-				case SWCmdOpsSSTVSend: {
-					debug_print("Command: Enable SSTV\n");
-					sstv_loop = 0;
-					sstv_loop_repeat = 0;
-					sstv_send();
-					break;
-				}
-				case SWCmdOpsSSTVLoop: {
-					debug_print("Command: Enable SSTV Loop\n");
-					sstv_loop = 1;
-					sstv_loop_repeat = 0;
-					sstv_send();
-					break;
-				}
-				default:
-					break;
-				}
-				break;
-			}
+	default:
+		break;
+	}
 
-			default:
-				break;
-			}
+}
+
+void iors_aprs(struct t_iors_event *iors_event) {
+	debug_print("STATE: APRS\n");
+	switch (iors_event->event) {
+	case EVENT_RADIO_DISCONNECTED:
+		g_iors_control_state = STATE_INIT;
+		break;
+	case EVENT_TNC_EXITED:
+	case EVENT_TNC_DISCONNECTED:
+		if (start_tnc() == EXIT_SUCCESS) {
+			g_iors_control_state = STATE_TNC_CONNECTED;
+		} else {
+			g_iors_control_state = STATE_RADIO_CONNECTED;
+			TIMER_T1 = time(0); // Start T1
 		}
 		break;
-
-
-	case STATE_SSTV: {
-		debug_print("STATE: SSTV\n");
-		switch (iors_event->event) {
-		case EVENT_RADIO_DISCONNECTED:
-			sstv_stop();
-			TIMER_T1 = time(0);
-			g_iors_control_state = STATE_INIT;
-			break;
-
-			// TODO - how to handle TNC disconnected.  We dont want to stop SSTV transmit if it is working.  Remember it and process in sstv_stop?
-
-		case EVENT_SSTV_EXITED:
-			sstv_stop();
-			break;
-		case TIMER_T1_EXPIRED:
-			sstv_send();
-			break;
-		case TIMER_T3_EXPIRED:
-			sstv_send();
-			break;
-		case TIMER_T4_EXPIRED:
-			sstv_loop = 0;
-			sstv_stop();
-			break;
-
-		/* We only receive commands between SSTV images because TNC uses the same sound card. */
-		case COMMAND_RX: {
-			//debug_print("COMMAND WHEN TNC CONNECTED: ns %d cmd %d\n",iors_event->nameSpace, iors_event->comarg.command);
-			switch (iors_event->comarg.command) {
-			case SWCmdOpsSSTVStop:
-				sstv_loop = 0;
-				TIMER_T1 = 0;
-				timer_t1_limit = TIMER_T1_DEFAULT_LIMIT;
-				g_iors_control_state = STATE_TNC_CONNECTED;
-				break;
-
-			default:
-				break;
+	case COMMAND_RX: {
+		switch (iors_event->comarg.command) {
+		case SWCmdOpsAPRSMode: {
+			debug_print("Command: APRS mode: %d\n", iors_event->comarg.arguments[0]);
+			if (iors_event->comarg.arguments[0] == 0) {
+				// TODO - do we need to force the channels to known setting?
+				if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF) == EXIT_SUCCESS) {
+					g_iors_control_state = STATE_TNC_CONNECTED;
+				}
+			} else {
+				if (radio_set_aprs_mode() == EXIT_SUCCESS)
+					g_iors_control_state = STATE_APRS;
 			}
 			break;
 		}
+		case SWCmdOpsXBandRepeaterMode:
+			debug_print("Command: Cross band Repeater mode: %d\n", iors_event->comarg.arguments[0]);
+			if (iors_event->comarg.arguments[0]) {
+				if (radio_set_cross_band_mode(RADIO_XBAND_RPT_ON) == EXIT_SUCCESS)
+					g_iors_control_state = STATE_CROSS_BAND_REPEATER;
+			} else {
+				if (radio_set_cross_band_mode(RADIO_XBAND_RPT_OFF) == EXIT_SUCCESS)
+					g_iors_control_state = STATE_TNC_CONNECTED;
+			}
+			break;
+		case SWCmdOpsSSTVSend: {
+			debug_print("Command: Enable SSTV\n");
+			sstv_loop = 0;
+			sstv_loop_repeat = 0;
+			sstv_send();
+			break;
+		}
+		case SWCmdOpsSSTVLoop: {
+			debug_print("Command: Enable SSTV Loop\n");
+			sstv_loop = 1;
+			sstv_loop_repeat = 0;
+			sstv_send();
+			break;
+		}
+		default:
+			break;
+		}
+		break;
+		}
+
+		default:
+			break;
+	}
+}
+
+void iors_sstv(struct t_iors_event *iors_event) {
+	debug_print("STATE: SSTV\n");
+	switch (iors_event->event) {
+	case EVENT_RADIO_DISCONNECTED:
+		sstv_stop();
+		TIMER_T1 = time(0);
+		g_iors_control_state = STATE_INIT;
+		break;
+
+		// TODO - how to handle TNC disconnected.  We dont want to stop SSTV transmit if it is working.  Remember it and process in sstv_stop?
+
+	case EVENT_SSTV_EXITED:
+		sstv_stop();
+		break;
+	case TIMER_T1_EXPIRED:
+		sstv_send();
+		break;
+	case TIMER_T3_EXPIRED:
+		sstv_send();
+		break;
+	case TIMER_T4_EXPIRED:
+		sstv_loop = 0;
+		sstv_stop();
+		break;
+
+	/* We only receive commands between SSTV images because TNC uses the same sound card. */
+	case COMMAND_RX: {
+		//debug_print("COMMAND WHEN TNC CONNECTED: ns %d cmd %d\n",iors_event->nameSpace, iors_event->comarg.command);
+		switch (iors_event->comarg.command) {
+		case SWCmdOpsSSTVStop:
+			sstv_loop = 0;
+			TIMER_T1 = 0;
+			timer_t1_limit = TIMER_T1_DEFAULT_LIMIT;
+			g_iors_control_state = STATE_TNC_CONNECTED;
+			break;
 
 		default:
 			break;
 		}
 		break;
 	}
-	case STATE_CROSS_BAND_REPEATER:
-		debug_print("STATE: CROSS BAND REPEATER\n");
-		switch (iors_event->event) {
-		case EVENT_RADIO_DISCONNECTED:
-			g_iors_control_state = STATE_INIT;
-			break;
-		case EVENT_TNC_EXITED:
-		case EVENT_TNC_DISCONNECTED:
-			if (start_tnc() == EXIT_SUCCESS) {
-				g_iors_control_state = STATE_TNC_CONNECTED;
-			} else {
-				// TODO - we leave the cross band repeater as is?
-				// So we return to this state if the TNC reconnects?
-				g_iors_control_state = STATE_RADIO_CONNECTED;
-				TIMER_T1 = time(0); // Start T1
-			}
-			break;
-		case COMMAND_RX: {
-			switch (iors_event->comarg.command) {
-			case SWCmdOpsXBandRepeaterMode:
-				debug_print("Command: Cross band Repeater mode: %d\n", iors_event->comarg.arguments[0]);
-				if (iors_event->comarg.arguments[0]) {
-					if (radio_set_cross_band_mode(RADIO_XBAND_RPT_ON) == EXIT_SUCCESS)
-						g_iors_control_state = STATE_CROSS_BAND_REPEATER;
-				} else {
-					if (radio_set_cross_band_mode(RADIO_XBAND_RPT_OFF) == EXIT_SUCCESS)
-						g_iors_control_state = STATE_TNC_CONNECTED;
-				}
-				break;
-			case SWCmdOpsSSTVSend: {
-				debug_print("Command: Enable SSTV\n");
-				sstv_loop = 0;
-				sstv_loop_repeat = 0;
-				sstv_send();
-				break;
-			}
-			case SWCmdOpsSSTVLoop: {
-				debug_print("Command: Enable SSTV Loop\n");
-				sstv_loop = 1;
-				sstv_loop_repeat = 0;
-				sstv_send();
-				break;
-			}
-			case SWCmdOpsAPRSMode:
-				debug_print("Command: APRS mode\n");
-				if (radio_set_aprs_mode() == EXIT_SUCCESS)
-					g_iors_control_state = STATE_APRS;
-				break;
-			default:
-				break;
-			}
-		    break;
-		}
 
+	default:
+		break;
+	}
+}
+
+void iors_cross_band_repeater(struct t_iors_event *iors_event) {
+	debug_print("STATE: CROSS BAND REPEATER\n");
+	switch (iors_event->event) {
+	case EVENT_RADIO_DISCONNECTED:
+		g_iors_control_state = STATE_INIT;
+		break;
+	case EVENT_TNC_EXITED:
+	case EVENT_TNC_DISCONNECTED:
+		if (start_tnc() == EXIT_SUCCESS) {
+			g_iors_control_state = STATE_TNC_CONNECTED;
+		} else {
+			// TODO - we leave the cross band repeater as is?
+			// So we return to this state if the TNC reconnects?
+			g_iors_control_state = STATE_RADIO_CONNECTED;
+			TIMER_T1 = time(0); // Start T1
+		}
+		break;
+	case COMMAND_RX: {
+		switch (iors_event->comarg.command) {
+		case SWCmdOpsXBandRepeaterMode:
+			debug_print("Command: Cross band Repeater mode: %d\n", iors_event->comarg.arguments[0]);
+			if (iors_event->comarg.arguments[0]) {
+				if (radio_set_cross_band_mode(RADIO_XBAND_RPT_ON) == EXIT_SUCCESS)
+					g_iors_control_state = STATE_CROSS_BAND_REPEATER;
+			} else {
+				if (radio_set_cross_band_mode(RADIO_XBAND_RPT_OFF) == EXIT_SUCCESS)
+					g_iors_control_state = STATE_TNC_CONNECTED;
+			}
+			break;
+		case SWCmdOpsSSTVSend: {
+			debug_print("Command: Enable SSTV\n");
+			sstv_loop = 0;
+			sstv_loop_repeat = 0;
+			sstv_send();
+			break;
+		}
+		case SWCmdOpsSSTVLoop: {
+			debug_print("Command: Enable SSTV Loop\n");
+			sstv_loop = 1;
+			sstv_loop_repeat = 0;
+			sstv_send();
+			break;
+		}
+		case SWCmdOpsAPRSMode:
+			debug_print("Command: APRS mode\n");
+			if (radio_set_aprs_mode() == EXIT_SUCCESS)
+				g_iors_control_state = STATE_APRS;
+			break;
+		default:
+			break;
+		}
+	    break;
+	}
+
+	default:
+		break;
+	}
+}
+
+void iors_process_pacsat(struct t_iors_event *iors_event) {
+	debug_print("STATE: PACSAT\n");
+	switch (iors_event->event) {
+	case EVENT_RADIO_DISCONNECTED:
+		g_iors_control_state = STATE_INIT;
+		break;
+	case EVENT_TNC_EXITED:
+	case EVENT_TNC_DISCONNECTED:
+		if (start_tnc() == EXIT_SUCCESS) {
+			g_iors_control_state = STATE_TNC_CONNECTED;
+		} else {
+			g_iors_control_state = STATE_RADIO_CONNECTED;
+			TIMER_T1 = time(0); // Start T1
+		}
+		break;
+	case COMMAND_RX: {
+		switch (iors_event->comarg.command) {
+		case SWCmdOpsPacsatMode:
+			debug_print("Command: Pacsat mode\n");
+			if (radio_set_cross_band_mode(RADIO_XBAND_RPT_ON) == EXIT_SUCCESS)
+				g_iors_control_state = STATE_CROSS_BAND_REPEATER;
+			break;
+		case SWCmdOpsSSTVSend: {
+			debug_print("Command: Enable SSTV\n");
+			sstv_loop = 0;
+			sstv_loop_repeat = 0;
+			sstv_send();
+			break;
+		}
+		case SWCmdOpsSSTVLoop: {
+			debug_print("Command: Enable SSTV Loop\n");
+			sstv_loop = 1;
+			sstv_loop_repeat = 0;
+			sstv_send();
+			break;
+		}
 		default:
 			break;
 		}
 		break;
+	}
 
-	default :
+	default:
 		break;
 	}
 }
@@ -652,7 +756,7 @@ int valid_command(char *from_callsign, unsigned char *data, int len, struct t_io
 
 	debug_print("Received Command %04x addr: %d names: %d cmd %d from %s length %d\n",(sw_command->dateTime),
 			sw_command->address, sw_command->namespaceNumber, (sw_command->comArg.command), from_callsign, len);
-	int i;
+//	int i;
 //	for (i=0; i<4; i++)
 //		debug_print("arg:%d %d\n",i,sw_command->comArg.arguments[i]);
 	/* Pass the data to the command processor */
