@@ -60,6 +60,8 @@ void iors_cross_band_repeater(struct t_iors_event *iors_event);
 int sstv_send();
 int sstv_stop();
 int next_sstv_file(char * filename);
+int start_pacsat();
+int stop_pacsat();
 int valid_command(char *from_callsign, unsigned char *data, int len, struct t_iors_event *command_event);
 int send_ok(char *from_callsign);
 int send_err(char *from_callsign, int err);
@@ -80,7 +82,7 @@ int cross_band_repeater = false;
 int sstv_loop = 0;
 int sstv_loop_repeat = 0;
 int frame_num = 0;
-pid_t tnc_pid = PID_NOT_RUNNING, sstv_pid = PID_NOT_RUNNING;
+pid_t tnc_pid = PID_NOT_RUNNING, sstv_pid = PID_NOT_RUNNING, pacsat_pid = PID_NOT_RUNNING;
 int ptt_serial = 0; /* Remember the serial file descriptor for the PTT as SSTV keeps it open across states */
 int timer_t1_limit = TIMER_T1_DEFAULT_LIMIT;
 int timer_t2_limit = TIMER_T2_DEFAULT_LIMIT;
@@ -269,6 +271,7 @@ void iors_process_event(struct t_iors_event *iors_event) {
 				g_iors_control_state = STATE_TNC_CONNECTED;
 				retries_N = 0;
 			} else {
+				///////TODO - if retries exceeded then restart or reboot?
 				timer_t1_limit = 10; // 10 second pause
 				TIMER_T1 = time(0); // Start T1
 			}
@@ -375,6 +378,26 @@ void iors_tnc_connected(struct t_iors_event *iors_event) {
 			}
 			break;
 		}
+		case SWCmdOpsPacsatMode: {
+			// TODO - duplicate code put in sub
+			debug_print("Command: PACSAT mode: %d\n", iors_event->comarg.arguments[0]);
+			if (iors_event->comarg.arguments[0] == 0) {
+				// TODO - do we need to force the channels to known setting?
+				if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF) == EXIT_SUCCESS) {
+					g_iors_control_state = STATE_TNC_CONNECTED;
+					stop_pacsat();
+				}
+			} else {
+				if (radio_set_pacsat_mode(1, g_radio_data_band, g_radio_data_speed) == EXIT_SUCCESS) {
+					if (start_pacsat() == EXIT_SUCCESS) {
+					} else {
+						TIMER_T1 = time(0); // Start T1
+					}
+					g_iors_control_state = STATE_PACSAT_CONNECTED;
+				}
+			}
+			break;
+		}
 		case SWCmdOpsTime: {
 			time_t t = iors_event->comarg.arguments[0] + (iors_event->comarg.arguments[1] << 16);
 			//debug_print("Command: Set time to %ld\n", t);
@@ -430,30 +453,6 @@ void iors_aprs(struct t_iors_event *iors_event) {
 				if (radio_set_aprs_mode() == EXIT_SUCCESS)
 					g_iors_control_state = STATE_APRS;
 			}
-			break;
-		}
-		case SWCmdOpsXBandRepeaterMode:
-			debug_print("Command: Cross band Repeater mode: %d\n", iors_event->comarg.arguments[0]);
-			if (iors_event->comarg.arguments[0]) {
-				if (radio_set_cross_band_mode(RADIO_XBAND_RPT_ON) == EXIT_SUCCESS)
-					g_iors_control_state = STATE_CROSS_BAND_REPEATER;
-			} else {
-				if (radio_set_cross_band_mode(RADIO_XBAND_RPT_OFF) == EXIT_SUCCESS)
-					g_iors_control_state = STATE_TNC_CONNECTED;
-			}
-			break;
-		case SWCmdOpsSSTVSend: {
-			debug_print("Command: Enable SSTV\n");
-			sstv_loop = 0;
-			sstv_loop_repeat = 0;
-			sstv_send();
-			break;
-		}
-		case SWCmdOpsSSTVLoop: {
-			debug_print("Command: Enable SSTV Loop\n");
-			sstv_loop = 1;
-			sstv_loop_repeat = 0;
-			sstv_send();
 			break;
 		}
 		default:
@@ -588,25 +587,37 @@ void iors_process_pacsat(struct t_iors_event *iors_event) {
 			TIMER_T1 = time(0); // Start T1
 		}
 		break;
+	case TIMER_T1_EXPIRED:
+		retries_N++;
+		if (start_pacsat() == EXIT_SUCCESS) {
+			retries_N = 0;
+		} else {
+			if (retries_N > MAX_RETRIES) {
+				retries_N = 0;
+				g_iors_control_state = STATE_TNC_CONNECTED;
+				// TODO - return to PM0 and standby?? Or are we in that mode
+			} else {
+				TIMER_T1 = time(0); // Start T1
+			}
+		}
+		break;
 	case COMMAND_RX: {
 		switch (iors_event->comarg.command) {
-		case SWCmdOpsPacsatMode:
-			debug_print("Command: Pacsat mode\n");
-			if (radio_set_cross_band_mode(RADIO_XBAND_RPT_ON) == EXIT_SUCCESS)
-				g_iors_control_state = STATE_CROSS_BAND_REPEATER;
-			break;
-		case SWCmdOpsSSTVSend: {
-			debug_print("Command: Enable SSTV\n");
-			sstv_loop = 0;
-			sstv_loop_repeat = 0;
-			sstv_send();
-			break;
-		}
-		case SWCmdOpsSSTVLoop: {
-			debug_print("Command: Enable SSTV Loop\n");
-			sstv_loop = 1;
-			sstv_loop_repeat = 0;
-			sstv_send();
+		case SWCmdOpsPacsatMode: {
+			// TODO - duplicate code put in sub
+			debug_print("Command: PACSAT mode: %d\n", iors_event->comarg.arguments[0]);
+			if (iors_event->comarg.arguments[0] == 0) {
+				// TODO - do we need to force the channels to known setting?
+				if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF) == EXIT_SUCCESS) {
+					g_iors_control_state = STATE_TNC_CONNECTED;
+					stop_pacsat();
+				}
+			} else {
+				if (radio_set_pacsat_mode(1, g_radio_data_band, g_radio_data_speed) == EXIT_SUCCESS) {
+					g_iors_control_state = STATE_PACSAT_CONNECTED;
+					start_pacsat();
+				}
+			}
 			break;
 		}
 		default:
@@ -743,6 +754,27 @@ int next_sstv_file(char * filename) {
 
 
 	return EXIT_SUCCESS;
+}
+
+int start_pacsat() {
+	char *argv[]={"pi_pacsat","-v", (char *)NULL};
+	pacsat_pid = start_program(g_pacsat_path,argv, g_pacsat_logfile_path);
+
+	if (pacsat_pid == -1) {
+		error_print("Can not start pacsat\n");
+		return EXIT_FAILURE;
+	} else {
+		debug_print("Pacsat started\n");
+		return EXIT_SUCCESS;
+	}
+}
+
+int stop_pacsat() {
+	stop_program("pi_pacsat", pacsat_pid);
+	sstv_pid = PID_NOT_RUNNING;
+	debug_print ("Pacsat finished\n");
+	return EXIT_SUCCESS;
+
 }
 
 int valid_command(char *from_callsign, unsigned char *data, int len, struct t_iors_event *command_event) {

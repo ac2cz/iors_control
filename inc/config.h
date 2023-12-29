@@ -86,6 +86,10 @@ extern char g_sstv_audio_dev[MAX_FILE_PATH_LEN];
 extern char g_sstv_queue_path[MAX_FILE_PATH_LEN];
 extern char g_sstv_logfile_path[MAX_FILE_PATH_LEN];
 
+extern char g_pacsat_path[MAX_FILE_PATH_LEN];
+extern char g_pacsat_dir_path[MAX_FILE_PATH_LEN];
+extern char g_pacsat_logfile_path[MAX_FILE_PATH_LEN];
+
 extern char g_iors_last_command_time_path[MAX_FILE_PATH_LEN];
 
 void load_config();

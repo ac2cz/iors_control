@@ -309,7 +309,7 @@ int radio_set_pacsat_mode(int state, int ext_data_band, int ext_data_speed) {
 	}
 
 	// Use MU command to set ext data band and speed, if Program Mode was not needed.  Otherwise set when that is called?
-    if (radio_set_channel(g_serial_dev, RADIO_SSTV_TX_CHANNEL, RADIO_RPT01_RX_CHANNEL) != EXIT_SUCCESS) {
+    if (radio_set_channel(g_serial_dev, RADIO_RPT01_TX_CHANNEL, RADIO_RPT01_RX_CHANNEL) != EXIT_SUCCESS) {
     	debug_print("ERROR: Can't change channels\n");
     	return EXIT_FAILURE;
 	}

@@ -74,6 +74,10 @@ char g_sstv_audio_dev[MAX_FILE_PATH_LEN] = "-Dhw:0,0";
 char g_sstv_queue_path[MAX_FILE_PATH_LEN] = "/mnt/usb-disk/ariss/sstv_q";
 char g_sstv_logfile_path[MAX_FILE_PATH_LEN] = "/tmp/pysstv.log";
 
+char g_pacsat_path[MAX_FILE_PATH_LEN] = "pi_pacsat";
+char g_pacsat_dir_path[MAX_FILE_PATH_LEN] = "/mnt/usb-disk/ariss/pacsat_dir";
+char g_pacsat_logfile_path[MAX_FILE_PATH_LEN] = "/tmp/pacsat.log";
+
 char g_iors_last_command_time_path[MAX_FILE_PATH_LEN] = "iors_last_command_time.dat";
 
 

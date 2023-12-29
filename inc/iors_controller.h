@@ -14,6 +14,7 @@
 #define TIMER_T2_DEFAULT_LIMIT 10
 #define TIMER_T3_DEFAULT_LIMIT 60 * 3; // 3 min timeout
 #define TIMER_T4_DEFAULT_LIMIT 60 * 60 * 8; // 8 hours
+#define MAX_RETRIES 10
 #define PERIOD_TO_CHECK_RADIO_CONNECTED 10 // 60*1 // Every minute
 #define PERIOD_TO_CHECK_TNC_CONNECTED 60*1 // Every minute
 #define PERIOD_TO_CHECK_PROGRAMS 2 // Every 2 seconds
