@@ -64,7 +64,7 @@ int g_max_frames_in_tx_buffer = 2;
 
 char g_direwolf_path[MAX_FILE_PATH_LEN] = "/usr/local/bin/direwolf";
 char g_direwolf_logfile_path[MAX_FILE_PATH_LEN] = "/tmp/direwolf.log";
-char g_direwolf_config_path[MAX_FILE_PATH_LEN] = "~/direwolf.conf";
+char g_direwolf_config_path[MAX_FILE_PATH_LEN] = "-c/home/pi/direwolf.conf";
 
 char g_sstv_path[MAX_FILE_PATH_LEN] = "sstv.sh";
 char g_sstv_audio_dev[MAX_FILE_PATH_LEN] = "-Dhw:0,0";

@@ -777,7 +777,7 @@ int start_program(char * command, char *argv[], char * logfile) {
 		while (argv[i] != NULL)
 			debug_print("%s ",argv[i++]);
 		debug_print("\n");
-		int fd = open(logfile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+		int fd = open(logfile, O_RDWR | O_CREAT | O_TRUNC, 666); // create log in tmp and allow anyone to delete it
 		dup2(fd, 1);   // make stdout go to file
 		dup2(fd, 2);   // make stderr go to file
 		close(fd);     // fd no longer needed - the dup'ed handles are sufficient
@@ -836,7 +836,7 @@ int start_tnc() {
 	}
 
 	if (! running) {
-		char *argv[]={"direwolf","-q d","-r 48000",(char *)NULL};
+		char *argv[]={"direwolf","-q d","-r 48000", g_direwolf_config_path,(char *)NULL};
 		tnc_pid = start_program(g_direwolf_path,argv, g_direwolf_logfile_path);
 		if (tnc_pid == -1) {
 			error_print("start_tnc(): Can not start direwolf\n");
