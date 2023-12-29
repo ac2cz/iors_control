@@ -37,6 +37,8 @@ extern int g_verbose;          /* print verbose output when set */
 extern int g_iors_control_state; /* The state of the IORS control state machine */
 extern int g_radio_pm;
 extern int g_radio_cross_band_repeater;
+extern int g_radio_data_band; /* TX/RX data band for A or B */
+extern int g_radio_data_speed; /* 0 = 1200 bps 1 = 9600 bps*/
 
 /* Define paramaters for config file */
 #define MAX_CONFIG_LINE_LENGTH 128

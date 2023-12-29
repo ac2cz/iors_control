@@ -38,8 +38,7 @@ int load_last_commmand_time() {
 		fgets ( line, sizeof line, fd ); /* read a line */
 		line[strcspn(line,"\n")] = 0; // Move the nul termination to get rid of the new line
 		last_command_time = atol(line);
-		//int pid = strtol(line, NULL, 0);
-		debug_print("Last Command Time was: %d\n",last_command_time);
+		//debug_print("Last Command Time was: %d\n",last_command_time);
 	}
 	fclose(fd);
 	return EXIT_SUCCESS;
@@ -56,27 +55,6 @@ int store_last_command_time() {
 	fclose(fd);
 	return EXIT_SUCCESS;
 }
-
-#ifdef OLD
-/**
- * DecodeSoftwareCommand()
- *
- */
-int DecodeSoftwareCommand(SWCmdUplink *softwareCommand) {
-
-    if(AuthenticateSoftwareCommand(softwareCommand)){
-        //debug_print("Command: Authenticated!\n");
-        /*
-         * Here we have a command that was received on the uplink and ready to act on.
-         */
-        int rc = DispatchSoftwareCommand(softwareCommand,true);
-        return rc;
-    } else {
-        debug_print("Command: does not authenticate\n");
-    }
-    return false;
-}
-#endif
 
 int AuthenticateSoftwareCommand(SWCmdUplink *uplink) {
     uint8_t localSecureHash[32];
@@ -144,143 +122,3 @@ int CommandTimeOK(SWCmdUplink *uplink) {
     }
     return true;
 }
-
-#ifdef OLD
-int DispatchSoftwareCommand(SWCmdUplink *uplink,bool local) {
-    uint8_t nameSpace;
-
-    /*
-     * Ok, we have a command that has been CRC checked, authenticated, timestamped,
-     * etc.
-     *
-     * Next we check other stuff that has to be right.  Specifically, we check the satellite address
-     * and then authenticate, and also check the timestamp for something reasonable.
-     */
-    nameSpace = uplink->namespaceNumber;
-
-    // LEAVE THE ADDRESS AS THIS COULD BE USED TO APPLY TO SUB MODULES - but dont validate it for now
-    if(uplink->address != OUR_ADDRESS){
-        //debug_print("Wrong address %x\n\r",uplink->address);
-        //return FALSE;
-    }
-//    if(local && (nameSpace != SWCmdNSInternal)){
-//        //Enter in the telemetry ring buffer only if it originated on this
-//        //CPU (and don't report internal commands)
-//        INSERT_IN_PAIR_RING_BUFFER(nameSpace,uplink->comArg.command);
-//    }
-
-//    /*
-//     * If Command Time Checking was enabled and we got a command, we know it is working
-//     * so we can turn off the timeout function
-//     */
-//    if(CommandTimeEnabled) {  // - is this missing { }??  Otherwise it applies to the command_print?? - { } added by G0KLA
-//        //SetInternalSchedules(NoTimeCommandTimeout,TIMEOUT_NONE);
-//    }
-
-//    debug_print("Namespace=%d,command=%d,arg=%d\n",nameSpace,uplink->comArg.command,
-//                  uplink->comArg.arguments[0]);
-
-    switch(nameSpace){
-    case SWCmdNSOps: {
-        return OpsSWCommands(&uplink->comArg);
-    }
-    case SWCmdNSTelemetry:{
-        return TlmSWCommands(&uplink->comArg);
-    }
-    default:
-        printf("Command: Unknown namespace %d\n\r",nameSpace);
-      //  localErrorCollection.DCTCmdFailNamespaceCnt++;
-        return FALSE;
-
-    }
-}
-
-/*
- * Just for initial pacsat code most of the operations that commands do are commented out.  We just
- * print the command so the uplink can be tested.
- */
-
-int OpsSWCommands(CommandAndArgs *comarg) {
-
-    switch((int)comarg->command){
-
-    case SWCmdOpsXBandRepeaterMode: {
-       // bool turnOn;
-       // turnOn = (comarg->arguments[0] != 0);
-       // if(turnOn){
-        	if (g_iors_control_state != STATE_CROSS_BAND_REPEATER) {
-        		debug_print("Command: Cross band Repeater mode\n");
-        		if (radio_set_cross_band_mode() == EXIT_SUCCESS)
-        			g_iors_control_state = STATE_CROSS_BAND_REPEATER;
-        	} else {
-        		debug_print("Command: Already in Cross band Repeater mode\n");
-        	}
-//        } else {
-//        	if (g_iors_control_state != STATE_SSTV_MODE) {
-//        		debug_print("Enable SSTV\n\r");
-//        		if (radio_set_sstv_mode() == EXIT_SUCCESS)
-//        			g_iors_control_state = STATE_SSTV_MODE;
-//        	}
-//        }
-        break;
-    }
-    case SWCmdOpsSSTVMode: {
-    	if (g_iors_control_state != STATE_SSTV) {
-        	debug_print("Command: Enable SSTV\n");
-        	if (radio_set_sstv_mode() == EXIT_SUCCESS)
-        		g_iors_control_state = STATE_SSTV;
-    	} else {
-        	debug_print("Command: Already in SSTV mode\n");
-    	}
-    	break;
-    }
-
-     default:
-//        localErrorCollection.DCTCmdFailCommandCnt++;
-        debug_print("Command: Unknown Ops Command %d\n\r",comarg->command);
-        return FALSE;
-    }
-    return TRUE;
-}
-//void EnableCommandPrint(bool enable){
-//    PrintCommandInfo = enable;
-//}
-//void EnableCommandTimeCheck(bool enable){
-//    CommandTimeEnabled = enable;
-//    if(enable){
-//        //SetInternalSchedules(NoTimeCommandTimeout,SW_COMMAND_TIME_TIMEOUT);
-//    } else {
-//        //SetInternalSchedules(NoTimeCommandTimeout,TIMEOUT_NONE);
-//    }
-//    WriteMRAMBoolState(StateCommandTimeCheck,CommandTimeEnabled);
-//}
-
-int TlmSWCommands(CommandAndArgs *comarg) {
-   switch(comarg->command){
-//    case SWCmdTlmWODSaveSize:
-//        command_print("Change WOD size to %d\n\r",comarg->arguments[0]);
-//        //ChangeWODSaved(comarg->arguments[0]);
-//        break;
-//
-//    case SWCmdTlmLegacyGain:
-//        command_print("Tlm legacy gain to %d\n\r",comarg->arguments[0]);
-//        break;
-//
-//    case SWCmdTlmDCTDrivePwr:{
-//        int myCpuIndex = 0;
-//        uint16_t lowPower = comarg->arguments[myCpuIndex]; // Arg 0 and 1 are for low
-//        uint16_t highPower = comarg->arguments[myCpuIndex+2]; //Arg 2 and 3 are for high
-//        command_print("Drive power reg for this proc are Low: %d, high: %d\n",lowPower,highPower);
-//        //SetDCTDriveValue(lowPower,highPower);
-//        break;
-//    }
-//
-    default:
-     //   localErrorCollection.DCTCmdFailCommandCnt++;
-        debug_print("Command: Unknown Tlm Command\n\r");
-        return FALSE;
-    }
-    return TRUE;
-}
-
-#endif

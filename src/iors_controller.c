@@ -299,9 +299,14 @@ void iors_process_event(struct t_iors_event *iors_event) {
 				}
 				break;
 			case SWCmdOpsXBandRepeaterMode:
-				debug_print("Command: Cross band Repeater mode\n");
-				if (radio_set_cross_band_mode() == EXIT_SUCCESS)
+				debug_print("Command: Cross band Repeater mode: %d\n", iors_event->comarg.arguments[0]);
+				if (iors_event->comarg.arguments[0]) {
+				if (radio_set_cross_band_mode(RADIO_XBAND_RPT_ON) == EXIT_SUCCESS)
 					g_iors_control_state = STATE_CROSS_BAND_REPEATER;
+				} else {
+					if (radio_set_cross_band_mode(RADIO_XBAND_RPT_OFF) == EXIT_SUCCESS)
+						g_iors_control_state = STATE_TNC_CONNECTED;
+				}
 				break;
 			case SWCmdOpsSSTVSend: {
 				debug_print("Command: Enable SSTV\n");
@@ -370,7 +375,7 @@ void iors_process_event(struct t_iors_event *iors_event) {
 				switch (iors_event->comarg.command) {
 				case SWCmdOpsXBandRepeaterMode:
 					debug_print("Command: Cross band Repeater mode\n");
-					if (radio_set_cross_band_mode() == EXIT_SUCCESS)
+					if (radio_set_cross_band_mode(RADIO_XBAND_RPT_ON) == EXIT_SUCCESS)
 						g_iors_control_state = STATE_CROSS_BAND_REPEATER;
 					break;
 				case SWCmdOpsSSTVSend: {
@@ -466,6 +471,16 @@ void iors_process_event(struct t_iors_event *iors_event) {
 			break;
 		case COMMAND_RX: {
 			switch (iors_event->comarg.command) {
+			case SWCmdOpsXBandRepeaterMode:
+				debug_print("Command: Cross band Repeater mode: %d\n", iors_event->comarg.arguments[0]);
+				if (iors_event->comarg.arguments[0]) {
+					if (radio_set_cross_band_mode(RADIO_XBAND_RPT_ON) == EXIT_SUCCESS)
+						g_iors_control_state = STATE_CROSS_BAND_REPEATER;
+				} else {
+					if (radio_set_cross_band_mode(RADIO_XBAND_RPT_OFF) == EXIT_SUCCESS)
+						g_iors_control_state = STATE_TNC_CONNECTED;
+				}
+				break;
 			case SWCmdOpsSSTVSend: {
 				debug_print("Command: Enable SSTV\n");
 				sstv_loop = 0;

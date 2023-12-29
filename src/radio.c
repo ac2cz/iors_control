@@ -246,12 +246,13 @@ int get_cts(int fd) {
 //    return 1;
 //}
 
-int radio_set_cross_band_mode() {
-	if (g_radio_pm == RADIO_PM0 && g_radio_cross_band_repeater == RADIO_XBAND_RPT_ON) {
-		debug_print("Already in cross band repeater mode\n");
+
+int radio_set_cross_band_mode(int state) {
+	if (g_radio_pm == RADIO_PM0 && g_radio_cross_band_repeater == state) {
+		debug_print("Already in cross band repeater mode: %d\n",state);
 	} else {
-		if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_ON) != EXIT_SUCCESS) {
-			debug_print("ERROR: Can not program the radio\n");
+		if (radio_program_pm(g_serial_dev, RADIO_PM0, state) != EXIT_SUCCESS) {
+			debug_print("ERROR: Can not program the radio to cross band repeater mode: %d\n", state);
 			return EXIT_FAILURE;
 		}
 	}
@@ -281,6 +282,27 @@ int radio_set_sstv_mode() {
 		debug_print("Already in PM0 with cross band repeater off\n");
 	} else {
 		if (radio_program_pm(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF) != EXIT_SUCCESS) {
+			debug_print("ERROR: Can not program the radio\n");
+			return EXIT_FAILURE;
+		}
+	}
+
+	// Use MU command to set ext data band and speed, if Program Mode was not needed.  Otherwise set when that is called?
+    if (radio_set_channel(g_serial_dev, RADIO_SSTV_TX_CHANNEL, RADIO_RPT01_RX_CHANNEL) != EXIT_SUCCESS) {
+    	debug_print("ERROR: Can't change channels\n");
+    	return EXIT_FAILURE;
+	}
+    return EXIT_SUCCESS;
+}
+
+/**
+ * radio_set_pacsat_mode()
+ */
+int radio_set_pacsat_mode(int state, int ext_data_band, int ext_data_speed) {
+	if (g_radio_pm == RADIO_PM0 && g_radio_cross_band_repeater == RADIO_XBAND_RPT_OFF) {
+		debug_print("Already in PM0 with cross band repeater off\n");
+	} else {
+		if (radio_program_pm_and_data_band(g_serial_dev, RADIO_PM0, RADIO_XBAND_RPT_OFF, ext_data_band, ext_data_speed) != EXIT_SUCCESS) {
 			debug_print("ERROR: Can not program the radio\n");
 			return EXIT_FAILURE;
 		}

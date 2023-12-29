@@ -30,6 +30,7 @@
 
 /* Project include files */
 #include "config.h"
+#include "radio.h"
 #include "str_util.h"
 #include "iors_command.h"
 #include "iors_controller.h"
@@ -49,6 +50,8 @@ int g_verbose = false;
 int g_frames_queued = 0;
 int g_radio_pm = -1;
 int g_radio_cross_band_repeater = -1;
+int g_radio_data_band = RADIO_EXT_DATA_BAND_TXA_RXB;
+int g_radio_data_speed = RADIO_EXT_DATA_SPEED_1200;
 
 /* These global variables are in the iors_control.config file.  This defines their default value
  * but it is overwritten if it is contained in the config file.  */
