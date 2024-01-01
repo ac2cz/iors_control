@@ -197,8 +197,8 @@ int main(int argc, char *argv[])  {
 	/* Load the config from disk */
     load_config(config_file_name);
 
-    /* Load the last command time */
-    load_last_commmand_time();
+    /* Init and load the last command time */
+    init_commanding(g_iors_last_command_time_path);
 
     iors_control_loop();
 

@@ -580,10 +580,16 @@ void iors_process_pacsat(struct t_iors_event *iors_event) {
 		break;
 	case EVENT_TNC_EXITED:
 	case EVENT_TNC_DISCONNECTED:
+		stop_pacsat();
 		if (start_tnc() == EXIT_SUCCESS) {
-			g_iors_control_state = STATE_TNC_CONNECTED;
+			if (start_pacsat() == EXIT_SUCCESS) {
+				g_iors_control_state = STATE_PACSAT_CONNECTED;
+			} else {
+				TIMER_T1 = time(0); // Start T1
+			}
 		} else {
 			g_iors_control_state = STATE_RADIO_CONNECTED;
+			// TODO - need a flag that says start PACSAT after TNC reconected
 			TIMER_T1 = time(0); // Start T1
 		}
 		break;
@@ -595,7 +601,6 @@ void iors_process_pacsat(struct t_iors_event *iors_event) {
 			if (retries_N > MAX_RETRIES) {
 				retries_N = 0;
 				g_iors_control_state = STATE_TNC_CONNECTED;
-				// TODO - return to PM0 and standby?? Or are we in that mode
 			} else {
 				TIMER_T1 = time(0); // Start T1
 			}
@@ -614,8 +619,9 @@ void iors_process_pacsat(struct t_iors_event *iors_event) {
 				}
 			} else {
 				if (radio_set_pacsat_mode(1, g_radio_data_band, g_radio_data_speed) == EXIT_SUCCESS) {
-					g_iors_control_state = STATE_PACSAT_CONNECTED;
-					start_pacsat();
+					if (start_pacsat() != EXIT_SUCCESS) {
+						TIMER_T1 = time(0); // Start T1					}
+					}
 				}
 			}
 			break;
@@ -786,7 +792,9 @@ int valid_command(char *from_callsign, unsigned char *data, int len, struct t_io
 	SWCmdUplink *sw_command;
 	sw_command = (SWCmdUplink *)(data + sizeof(AX25_HEADER));
 
-	debug_print("Received Command %04x addr: %d names: %d cmd %d from %s length %d\n",(sw_command->dateTime),
+	if(sw_command->namespaceNumber != SWCmdNSOps) return EXIT_SUCCESS; // This was not for us, ignore
+
+	debug_print("Received OPS Command %04x addr: %d names: %d cmd %d from %s length %d\n",(sw_command->dateTime),
 			sw_command->address, sw_command->namespaceNumber, (sw_command->comArg.command), from_callsign, len);
 //	int i;
 //	for (i=0; i<4; i++)
@@ -995,7 +1003,7 @@ int start_tnc() {
 			return EXIT_FAILURE;
 		}
 	}
-	sleep(2); // give TNC time to start
+	sleep(3); // give TNC time to start
 	if (connect_tnc() == EXIT_SUCCESS) {
 		return EXIT_SUCCESS;
 	} else {
